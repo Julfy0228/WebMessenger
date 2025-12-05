@@ -10,8 +10,14 @@ namespace WebMessenger
         {
             var builder = WebApplication.CreateBuilder(args);
 
+            builder.WebHost.UseUrls("http://localhost:5000", "https://localhost:5001");
+
             // Add services to the container.
             builder.Services.AddControllersWithViews();
+
+            // Swagger
+            builder.Services.AddEndpointsApiExplorer();
+            builder.Services.AddSwaggerGen();
 
             // Настройка Entity Framework с SQLite
             builder.Services.AddDbContext<AppDbContext>(options =>
@@ -49,26 +55,45 @@ namespace WebMessenger
                     policy.RequireAuthenticatedUser());
             });
 
+            // Регистрируем сервис отправки писем
+            builder.Services.AddScoped<IEmailSender, LocalSmtpEmailSender>();
+
             var app = builder.Build();
 
             // Configure the HTTP request pipeline.
             if (!app.Environment.IsDevelopment())
             {
                 app.UseExceptionHandler("/Home/Error");
-                // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
                 app.UseHsts();
             }
 
             app.UseHttpsRedirection();
             app.UseRouting();
 
+            // Swagger
+            if (app.Environment.IsDevelopment())
+            {
+                app.UseSwagger();
+                app.UseSwaggerUI();
+            }
+
+            app.UseAuthentication();
             app.UseAuthorization();
 
-            app.MapStaticAssets();
+            // Подключаем API-контроллеры (AuthController и т.п.)
+            app.MapControllers();
+
+            // Подключаем MVC-маршрут для обычных страниц
             app.MapControllerRoute(
                 name: "default",
                 pattern: "{controller=Home}/{action=Index}/{id?}")
                 .WithStaticAssets();
+
+            //app.MapStaticAssets();
+            //app.MapControllerRoute(
+            //    name: "default",
+            //    pattern: "{controller=Home}/{action=Index}/{id?}")
+            //    .WithStaticAssets();
 
             using (var scope = app.Services.CreateScope())
             {
