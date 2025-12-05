@@ -16,7 +16,7 @@ namespace WebMessenger.Entities
         [Required]
         public ChatType Type { get; set; }
 
-        public DateTime CreatedAt { get; set; }
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
         [JsonIgnore]
         public ICollection<Participant> Participants { get; private set; } = [];

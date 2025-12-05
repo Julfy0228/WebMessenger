@@ -67,7 +67,7 @@ namespace WebMessenger
                 app.UseHsts();
             }
 
-            app.UseHttpsRedirection();
+            //app.UseHttpsRedirection();
             app.UseRouting();
 
             // Swagger

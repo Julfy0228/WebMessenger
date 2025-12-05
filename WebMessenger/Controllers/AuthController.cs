@@ -1,28 +1,20 @@
 ﻿using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using WebMessenger.Entities;
-using System.IO;
 using WebMessenger.Models.Requests;
 
 namespace WebMessenger.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
-    public class AuthController : ControllerBase
+    public class AuthController(
+        UserManager<User> userManager,
+        SignInManager<User> signInManager,
+        IEmailSender emailSender) : ControllerBase
     {
-        private readonly UserManager<User> _userManager;
-        private readonly SignInManager<User> _signInManager;
-        private readonly IEmailSender _emailSender;
-
-        public AuthController(
-            UserManager<User> userManager,
-            SignInManager<User> signInManager,
-            IEmailSender emailSender)
-        {
-            _userManager = userManager;
-            _signInManager = signInManager;
-            _emailSender = emailSender;
-        }
+        private readonly UserManager<User> _userManager = userManager;
+        private readonly SignInManager<User> _signInManager = signInManager;
+        private readonly IEmailSender _emailSender = emailSender;
 
         [HttpPost("register")]
         public async Task<IActionResult> Register([FromBody] RegisterRequest request)
@@ -49,9 +41,9 @@ namespace WebMessenger.Controllers
                 .Replace("@UserName", user.UserName)
                 .Replace("@ConfirmUrl", confirmUrl);
 
-            await _emailSender.SendEmailAsync(user.Email!, "Confirm your email", html);
+            await _emailSender.SendEmailAsync(user.Email!, "Подтвердите вашу почту", html);
 
-            return Ok("Registration successful. Please check your email to confirm.");
+            return Ok("Регистрация успешна. Проверьте письмо на вашем почтовом адресе, чтобы завершить регистрацию.");
         }
 
         [HttpPost("login")]
@@ -64,15 +56,15 @@ namespace WebMessenger.Controllers
                        ?? await _userManager.FindByEmailAsync(request.Login);
 
             if (user == null)
-                return Unauthorized("Invalid login attempt.");
+                return Unauthorized("Неудачная попытка авторизации.");
 
             var result = await _signInManager.PasswordSignInAsync(
                 user, request.Password, request.RememberMe, lockoutOnFailure: false);
 
             if (!result.Succeeded)
-                return Unauthorized("Invalid login attempt.");
+                return Unauthorized("Неудачная попытка авторизации.");
 
-            return Ok("Login successful.");
+            return Ok("Вы успешно авторизировались.");
         }
 
         [HttpGet("confirm-email")]
@@ -80,20 +72,40 @@ namespace WebMessenger.Controllers
         {
             var user = await _userManager.FindByIdAsync(userId);
             if (user == null)
-                return NotFound("User not found.");
+                return NotFound("Пользователь не найден.");
 
             var result = await _userManager.ConfirmEmailAsync(user, token);
             if (!result.Succeeded)
                 return BadRequest(result.Errors);
 
-            return Ok("Email confirmed successfully.");
+            return Ok("Почта успешно подтверждена.");
         }
 
         [HttpPost("logout")]
         public async Task<IActionResult> Logout()
         {
             await _signInManager.SignOutAsync();
-            return Ok("Logged out successfully.");
+            return Ok("Вы успешно вышли из системы.");
+        }
+
+        [HttpGet("me")]
+        public async Task<IActionResult> GetCurrentUser()
+        {
+            var user = await _userManager.GetUserAsync(User);
+
+            if (user == null)
+                return Unauthorized("Пользователь не авторизован.");
+
+            return Ok(new
+            {
+                user.Id,
+                user.UserName,
+                user.Email,
+                user.DisplayName,
+                user.IsOnline,
+                user.LastOnline,
+                user.CreatedAt
+            });
         }
     }
 }
