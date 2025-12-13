@@ -9,8 +9,6 @@ namespace WebMessenger
 
     public class LocalSmtpEmailSender(ILogger<LocalSmtpEmailSender> logger) : IEmailSender
     {
-        private readonly ILogger<LocalSmtpEmailSender> _logger = logger;
-
         public async Task SendEmailAsync(string email, string subject, string htmlMessage)
         {
             using MailMessage mm = new("server@webmessenger.ru", email);
@@ -23,7 +21,7 @@ namespace WebMessenger
             sc.UseDefaultCredentials = false;
             sc.DeliveryMethod = SmtpDeliveryMethod.Network;
             await sc.SendMailAsync(mm);
-            _logger.LogInformation($"Email sent via open relay to {email}");
+            logger.LogInformation($"Письмо отправлено на {email}");
         }
     }
 }

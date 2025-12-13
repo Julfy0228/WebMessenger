@@ -12,18 +12,21 @@ namespace WebMessenger
 
             builder.WebHost.UseUrls("http://localhost:5000", "https://localhost:5001");
 
-            // Add services to the container.
+            // Добавление сервисов в контейнер
             builder.Services.AddControllersWithViews();
+
+            // SignalR
+            builder.Services.AddSignalR();
 
             // Swagger
             builder.Services.AddEndpointsApiExplorer();
             builder.Services.AddSwaggerGen();
 
-            // Настройка Entity Framework с SQLite
+            // EF Core SQLite
             builder.Services.AddDbContext<AppDbContext>(options =>
                 options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-            // Настройка Identity
+            // Identity
             builder.Services.AddIdentity<User, IdentityRole<int>>(options =>
             {
                 options.User.AllowedUserNameCharacters =
@@ -35,7 +38,6 @@ namespace WebMessenger
             .AddEntityFrameworkStores<AppDbContext>()
             .AddDefaultTokenProviders();
 
-            // Настройка аутентификации через куки
             builder.Services.ConfigureApplicationCookie(options =>
             {
                 options.Cookie.Name = "WebMessenger.Auth";
@@ -47,7 +49,6 @@ namespace WebMessenger
                 options.AccessDeniedPath = "/api/auth/access-denied";
             });
 
-            // Убираем проверку ролей в авторизации
             builder.Services.AddAuthorization(options =>
             {
                 options.FallbackPolicy = null;
@@ -55,22 +56,19 @@ namespace WebMessenger
                     policy.RequireAuthenticatedUser());
             });
 
-            // Регистрируем сервис отправки писем
             builder.Services.AddScoped<IEmailSender, LocalSmtpEmailSender>();
 
             var app = builder.Build();
 
-            // Configure the HTTP request pipeline.
             if (!app.Environment.IsDevelopment())
             {
                 app.UseExceptionHandler("/Home/Error");
                 app.UseHsts();
             }
 
-            //app.UseHttpsRedirection();
+            app.UseStaticFiles();
             app.UseRouting();
 
-            // Swagger
             if (app.Environment.IsDevelopment())
             {
                 app.UseSwagger();
@@ -80,25 +78,19 @@ namespace WebMessenger
             app.UseAuthentication();
             app.UseAuthorization();
 
-            // Подключаем API-контроллеры (AuthController и т.п.)
             app.MapControllers();
 
-            // Подключаем MVC-маршрут для обычных страниц
+            // SignalR ChatHub
+            app.MapHub<Hubs.ChatHub>("/chathub");
+
             app.MapControllerRoute(
                 name: "default",
-                pattern: "{controller=Home}/{action=Index}/{id?}")
-                .WithStaticAssets();
-
-            //app.MapStaticAssets();
-            //app.MapControllerRoute(
-            //    name: "default",
-            //    pattern: "{controller=Home}/{action=Index}/{id?}")
-            //    .WithStaticAssets();
+                pattern: "{controller=Home}/{action=Index}/{id?}");
 
             using (var scope = app.Services.CreateScope())
             {
                 var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-                dbContext.Database.EnsureCreated(); // TODO: Заменить на миграцию
+                dbContext.Database.EnsureCreated();
             }
 
             app.Run();

@@ -2,7 +2,52 @@
     ViewData["Title"] = "Home Page";
 }
 
-<div class="text-center">
-    <h1 class="display-4">Welcome</h1>
-    <p>Learn about <a href="https://learn.microsoft.com/aspnet/core">building Web apps with ASP.NET Core</a>.</p>
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8 text-center">
+            <h1 class="display-4 fw-bold text-primary">Добро пожаловать в WebMessenger</h1>
+            <p class="lead text-muted">
+                Ваш современный чат с поддержкой <strong>SignalR</strong> и реального времени.
+            </p>
+
+            <div class="d-grid gap-2 d-sm-flex justify-content-sm-center mt-4">
+                <button class="btn btn-primary btn-lg px-4 gap-3" data-bs-toggle="modal" data-bs-target="#authModal">Регистрация / Вход</button>
+            </div>
+        </div>
+    </div>
+
+    <hr class="my-5">
+
+    <div class="row text-center">
+        <div class="col-md-4">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title">💬 Чаты</h5>
+                    <p class="card-text">Создавайте групповые и приватные чаты.</p>
+                    <a href="/Chat" class="btn btn-outline-primary">Перейти</a>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title">📨 Сообщения</h5>
+                    <p class="card-text">Отправляйте текст и вложения в реальном времени.</p>
+                    <a href="/Message" class="btn btn-outline-primary">Перейти</a>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card shadow-sm">
+                <div class="card-body">
+                    <h5 class="card-title">👤 Профиль</h5>
+                    <p class="card-text">Обновляйте имя, аватарку и статус.</p>
+                    <a href="/User/Me" class="btn btn-outline-primary">Перейти</a>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
+

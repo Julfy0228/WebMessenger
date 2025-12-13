@@ -20,6 +20,9 @@ namespace WebMessenger.Entities
                 LastOnline = DateTime.UtcNow;
         }
 
+        [MaxLength(2048)]
+        public string? AvatarUrl { get; set; }
+
         [JsonIgnore]
         public ICollection<Participant> Chats { get; private set; } = [];
 
