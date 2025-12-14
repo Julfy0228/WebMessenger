@@ -39,21 +39,6 @@ namespace WebMessenger.Entities
         public string? Name { get; set; }
 
         public string? Extension => Name!.Split('.').LastOrDefault();
-
-        public virtual string GetFriendlySize()
-        {
-            if (!Size.HasValue) return "N/A";
-
-            string[] sizes = ["B", "KB", "MB", "GB", "TB"];
-            double len = Size.Value;
-            int order = 0;
-            while (len >= 1024 && order < sizes.Length - 1)
-            {
-                order++;
-                len /= 1024;
-            }
-            return $"{len:0.##} {sizes[order]}";
-        }
     }
 
     public class ImageAttachment : FileAttachment

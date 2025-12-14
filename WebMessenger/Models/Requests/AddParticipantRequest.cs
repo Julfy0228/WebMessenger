@@ -8,5 +8,4 @@ namespace WebMessenger.Models.Requests
         public int UserId { get; set; }
         public UserRole Role { get; set; } = UserRole.Member;
     }
-
 }

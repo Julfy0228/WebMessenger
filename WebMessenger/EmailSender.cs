@@ -7,7 +7,7 @@ namespace WebMessenger
         Task SendEmailAsync(string email, string subject, string htmlMessage);
     }
 
-    public class LocalSmtpEmailSender(ILogger<LocalSmtpEmailSender> logger) : IEmailSender
+    public class LocalSmtpEmailSender() : IEmailSender
     {
         public async Task SendEmailAsync(string email, string subject, string htmlMessage)
         {
@@ -21,7 +21,6 @@ namespace WebMessenger
             sc.UseDefaultCredentials = false;
             sc.DeliveryMethod = SmtpDeliveryMethod.Network;
             await sc.SendMailAsync(mm);
-            logger.LogInformation($"Письмо отправлено на {email}");
         }
     }
 }

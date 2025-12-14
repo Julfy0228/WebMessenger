@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
+using System.Text.RegularExpressions;
 using WebMessenger.Entities;
 using WebMessenger.Hubs;
 using WebMessenger.Models.Requests;
@@ -13,7 +14,11 @@ namespace WebMessenger.Controllers
     [ApiController]
     [Route("api/[controller]")]
     [Authorize]
-    public class ChatController(AppDbContext db, UserManager<User> userManager, IHubContext<ChatHub> hubContext) : ControllerBase
+    public class ChatController(
+        AppDbContext db,
+        UserManager<User> userManager,
+        IHubContext<ChatHub> hubContext,
+        IWebHostEnvironment env) : ControllerBase
     {
         [HttpPost]
         public async Task<IActionResult> CreateChat([FromBody] CreateChatRequest request)
@@ -21,7 +26,28 @@ namespace WebMessenger.Controllers
             var currentUser = await userManager.GetUserAsync(User);
             if (currentUser == null) return Unauthorized(new { message = "Вы не авторизированы" });
 
-            var chat = new Chat(request.Name, request.Type);
+            if (request.Type == ChatType.Private && request.ParticipantIds.Count == 1)
+            {
+                var targetUserId = request.ParticipantIds.First();
+                if (targetUserId == currentUser.Id)
+                    return BadRequest(new { message = "Нельзя создать чат с самим собой" });
+
+                var existingChat = await db.Chats
+                    .Where(c => c.Type == ChatType.Private)
+                    .Where(c => c.Participants.Any(p => p.UserId == currentUser.Id))
+                    .Where(c => c.Participants.Any(p => p.UserId == targetUserId))
+                    .Include(c => c.Participants).ThenInclude(p => p.User)
+                    .FirstOrDefaultAsync();
+
+                if (existingChat != null)
+                    return Ok(MapToResponse(existingChat));
+            }
+
+            var chat = new Chat
+            {
+                Name = request.Name,
+                Type = request.Type
+            };
             db.Chats.Add(chat);
             await db.SaveChangesAsync();
 
@@ -50,27 +76,11 @@ namespace WebMessenger.Controllers
 
             await db.SaveChangesAsync();
 
-            await hubContext.Clients.All.SendAsync("ChatCreated", chat.Id, chat.Name, chat.Type, chat.CreatedAt);
+            await hubContext.Clients.All.SendAsync("ChatCreated");
 
-            var chatDto = new ChatResponse
-            {
-                Id = chat.Id,
-                Name = chat.Name,
-                Type = chat.Type,
-                CreatedAt = chat.CreatedAt,
-                Participants = new List<ParticipantResponse>
-                {
-                    new ParticipantResponse
-                    {
-                        UserId = owner.UserId,
-                        UserName = currentUser.UserName,
-                        DisplayName = currentUser.DisplayName,
-                        Role = owner.Role
-                    }
-                }
-            };
+            await db.Entry(chat).Collection(c => c.Participants).Query().Include(p => p.User).LoadAsync();
 
-            return CreatedAtAction(nameof(GetChat), new { id = chat.Id }, chatDto);
+            return CreatedAtAction(nameof(GetChat), new { id = chat.Id }, MapToResponse(chat));
         }
 
         [HttpGet("{id}")]
@@ -82,32 +92,20 @@ namespace WebMessenger.Controllers
 
             if (chat == null) return NotFound(new { message = "Чат не найден" });
 
-            var response = new ChatResponse
-            {
-                Id = chat.Id,
-                Name = chat.Name,
-                Type = chat.Type,
-                CreatedAt = chat.CreatedAt,
-                Participants = chat.Participants.Select(p => new ParticipantResponse
-                {
-                    UserId = p.UserId,
-                    UserName = p.User?.UserName,
-                    DisplayName = p.User?.DisplayName,
-                    Role = p.Role
-                }).ToList()
-            };
-
-            return Ok(response);
+            return Ok(MapToResponse(chat));
         }
 
         [HttpPost("{chatId}/participants")]
         public async Task<IActionResult> AddParticipant(int chatId, [FromBody] AddParticipantRequest request)
         {
-            var chat = await db.Chats
-                .Include(c => c.Participants)
-                .FirstOrDefaultAsync(c => c.Id == chatId);
+            if (request.Role == UserRole.Owner)
+                return BadRequest(new { message = "Нельзя назначить роль Owner через этот метод" });
 
+            var chat = await db.Chats.Include(c => c.Participants).FirstOrDefaultAsync(c => c.Id == chatId);
             if (chat == null) return NotFound(new { message = "Чат не найден" });
+
+            if (chat.Type == ChatType.Private)
+                return BadRequest(new { message = "Нельзя добавлять участников в приватный чат" });
 
             if (chat.Participants.Any(p => p.UserId == request.UserId))
                 return BadRequest(new { message = "Пользователь уже состоит в чате" });
@@ -156,67 +154,22 @@ namespace WebMessenger.Controllers
                         UserName = p.User!.UserName,
                         DisplayName = p.User!.DisplayName,
                         Role = p.Role
-                    }).ToList()
-                })
-                .ToListAsync();
+                    }).ToList(),
+                    LastMessage = db.Messages
+                        .Where(m => m.ChatId == c.Id)
+                        .OrderByDescending(m => m.SentAt)
+                        .Select(m => new LastMessageResponse
+                        {
+                            Id = m.Id,
+                            SenderId = m.SenderId,
+                            SenderName = m.Sender!.UserName,
+                            Text = m.Text,
+                            SentAt = m.SentAt,
+                            AttachmentsCount = m.Attachments.Count()
+                        }).FirstOrDefault()
+                }).ToListAsync();
 
             return Ok(chats);
-        }
-
-        #region Messages
-        [HttpGet("{chatId}/messages")]
-        public async Task<IActionResult> GetMessages(int chatId)
-        {
-            var currentUser = await userManager.GetUserAsync(User);
-            if (currentUser == null) return Unauthorized(new { message = "Вы не авторизированы" });
-
-            var chat = await db.Chats
-                .Include(c => c.Participants)
-                .FirstOrDefaultAsync(c => c.Id == chatId);
-
-            if (chat == null) return NotFound(new { message = "Чат не найден" });
-            if (!chat.Participants.Any(p => p.UserId == currentUser.Id))
-                return StatusCode(403, new { message = "Вы не состоите в этом чате" });
-
-            var messages = await db.Messages
-                .Include(m => m.Attachments)
-                .Include(m => m.Sender)
-                .Where(m => m.ChatId == chatId)
-                .OrderBy(m => m.SentAt)
-                .ToListAsync();
-
-            var response = messages.Select(m => new MessageResponse
-            {
-                Id = m.Id,
-                ChatId = m.ChatId,
-                SenderId = m.SenderId,
-                SenderName = m.Sender?.UserName,
-                Text = m.Text,
-                SentAt = m.SentAt,
-                EditedAt = m.EditedAt,
-                IsRead = m.IsRead,
-                ReadAt = m.ReadAt,
-                Attachments = m.Attachments.Select(a => new AttachmentResponse
-                {
-                    Id = a.Id,
-                    Type = a.Type,
-                    Url = (a as FileAttachment)?.Url ?? (a as LinkAttachment)?.Url,
-                    Name = (a as FileAttachment)?.Name,
-                    Size = (a as FileAttachment)?.Size,
-                    Extension = (a as FileAttachment)?.Extension,
-                    Width = (a as ImageAttachment)?.Width ?? (a as VideoAttachment)?.Width,
-                    Height = (a as ImageAttachment)?.Height ?? (a as VideoAttachment)?.Height,
-                    Duration = (a as AudioAttachment)?.Duration ?? (a as VideoAttachment)?.Duration,
-                    Artist = (a as AudioAttachment)?.Artist,
-                    Album = (a as AudioAttachment)?.Album,
-                    TrackNumber = (a as AudioAttachment)?.TrackNumber,
-                    Bitrate = (a as AudioAttachment)?.Bitrate,
-                    Latitude = (a as LocationAttachment)?.Latitude,
-                    Longitude = (a as LocationAttachment)?.Longitude
-                }).ToList()
-            }).ToList();
-
-            return Ok(response);
         }
 
         [HttpPost("{chatId}/messages")]
@@ -244,22 +197,46 @@ namespace WebMessenger.Controllers
             await db.SaveChangesAsync();
 
             var attachments = new List<Attachment>();
-            if (request.Attachments != null)
+            if (request.Attachments != null && request.Attachments.Any())
             {
+                var uploadPath = Path.Combine(env.WebRootPath, "uploads");
+                if (!Directory.Exists(uploadPath)) Directory.CreateDirectory(uploadPath);
+
                 foreach (var att in request.Attachments)
                 {
-                    if (string.IsNullOrWhiteSpace(att.Url) && att.Type != AttachmentType.Location)
-                        continue;
+                    string finalUrl = att.Url ?? "";
+                    long fileSize = att.Size ?? 0;
+
+                    if (!string.IsNullOrEmpty(att.Url) && att.Url.StartsWith("data:"))
+                    {
+                        try
+                        {
+                            var match = Regex.Match(att.Url, @"data:(?<type>.+?);base64,(?<data>.+)");
+                            if (match.Success)
+                            {
+                                var base64Data = match.Groups["data"].Value;
+                                var contentType = match.Groups["type"].Value;
+                                var extension = GetExtension(contentType);
+                                var fileName = $"{Guid.NewGuid()}{extension}";
+                                var filePath = Path.Combine(uploadPath, fileName);
+
+                                var bytes = Convert.FromBase64String(base64Data);
+                                await System.IO.File.WriteAllBytesAsync(filePath, bytes);
+
+                                finalUrl = $"/uploads/{fileName}";
+                                fileSize = bytes.Length;
+                            }
+                        }
+                        catch
+                        {
+                            continue;
+                        }
+                    }
 
                     Attachment entity = att.Type switch
                     {
-                        AttachmentType.Image => new ImageAttachment { MessageId = message.Id, Url = att.Url!, Size = att.Size, Name = att.Name, Width = att.Width ?? 0, Height = att.Height ?? 0 },
-                        AttachmentType.Audio => new AudioAttachment { MessageId = message.Id, Url = att.Url!, Size = att.Size, Name = att.Name, Duration = att.Duration ?? 0, Artist = att.Artist, Album = att.Album, TrackNumber = att.TrackNumber, Bitrate = att.Bitrate },
-                        AttachmentType.Video => new VideoAttachment { MessageId = message.Id, Url = att.Url!, Size = att.Size, Name = att.Name, Duration = att.Duration ?? 0, Width = att.Width ?? 0, Height = att.Height ?? 0 },
-                        AttachmentType.Document => new DocumentAttachment { MessageId = message.Id, Url = att.Url!, Size = att.Size, Name = att.Name },
-                        AttachmentType.Link => new LinkAttachment { MessageId = message.Id, Url = att.Url! },
-                        AttachmentType.Location => new LocationAttachment { MessageId = message.Id, Latitude = att.Latitude ?? 0, Longitude = att.Longitude ?? 0 },
-                        _ => new FileAttachment { MessageId = message.Id, Url = att.Url!, Size = att.Size, Name = att.Name }
+                        AttachmentType.Image => new ImageAttachment { MessageId = message.Id, Url = finalUrl, Size = fileSize, Name = att.Name, Width = att.Width ?? 0, Height = att.Height ?? 0 },
+                        _ => new FileAttachment { MessageId = message.Id, Url = finalUrl, Size = fileSize, Name = att.Name }
                     };
 
                     attachments.Add(entity);
@@ -278,24 +255,7 @@ namespace WebMessenger.Controllers
                 SenderName = currentUser.UserName,
                 Text = message.Text,
                 SentAt = message.SentAt,
-                Attachments = attachments.Select(a => new AttachmentResponse
-                {
-                    Id = a.Id,
-                    Type = a.Type,
-                    Url = (a as FileAttachment)?.Url ?? (a as LinkAttachment)?.Url,
-                    Name = (a as FileAttachment)?.Name,
-                    Size = (a as FileAttachment)?.Size,
-                    Extension = (a as FileAttachment)?.Extension,
-                    Width = (a as ImageAttachment)?.Width ?? (a as VideoAttachment)?.Width,
-                    Height = (a as ImageAttachment)?.Height ?? (a as VideoAttachment)?.Height,
-                    Duration = (a as AudioAttachment)?.Duration ?? (a as VideoAttachment)?.Duration,
-                    Artist = (a as AudioAttachment)?.Artist,
-                    Album = (a as AudioAttachment)?.Album,
-                    TrackNumber = (a as AudioAttachment)?.TrackNumber,
-                    Bitrate = (a as AudioAttachment)?.Bitrate,
-                    Latitude = (a as LocationAttachment)?.Latitude,
-                    Longitude = (a as LocationAttachment)?.Longitude
-                }).ToList()
+                Attachments = attachments.Select(MapAttachment).ToList()
             };
 
             await hubContext.Clients.Group(chatId.ToString())
@@ -304,55 +264,75 @@ namespace WebMessenger.Controllers
             return Ok(response);
         }
 
-        [HttpPut("{chatId}/messages/{messageId}")]
-        public async Task<IActionResult> EditMessage(int chatId, int messageId, [FromBody] EditMessageRequest request)
+        [HttpGet("{chatId}/messages")]
+        public async Task<IActionResult> GetMessages(int chatId)
         {
             var currentUser = await userManager.GetUserAsync(User);
-            if (currentUser == null) return Unauthorized(new { message = "Вы не авторизированы" });
+            if (currentUser == null) return Unauthorized();
 
-            var message = await db.Messages.FirstOrDefaultAsync(m => m.Id == messageId && m.ChatId == chatId);
+            var messages = await db.Messages
+                .Include(m => m.Attachments)
+                .Include(m => m.Sender)
+                .Where(m => m.ChatId == chatId)
+                .OrderBy(m => m.SentAt)
+                .ToListAsync();
 
-            if (message == null) return NotFound(new { message = "Сообщение не найдено" });
-            if (message.SenderId != currentUser.Id) return StatusCode(403, new { message = "Вы можете редактировать только свои сообщения" });
-
-            message.Edit(request.NewText);
-            await db.SaveChangesAsync();
-
-            var response = new MessageResponse
+            return Ok(messages.Select(m => new MessageResponse
             {
-                Id = message.Id,
-                ChatId = message.ChatId,
-                SenderId = message.SenderId,
-                SenderName = currentUser.UserName,
-                Text = message.Text,
-                SentAt = message.SentAt,
-                EditedAt = message.EditedAt
-            };
-
-            await hubContext.Clients.Group(chatId.ToString())
-                .SendAsync("MessageEdited", response);
-
-            return Ok(response);
+                Id = m.Id,
+                ChatId = m.ChatId,
+                SenderId = m.SenderId,
+                SenderName = m.Sender?.UserName,
+                Text = m.Text,
+                SentAt = m.SentAt,
+                Attachments = m.Attachments.Select(MapAttachment).ToList()
+            }));
         }
 
-        [HttpDelete("{chatId}/messages/{messageId}")]
-        public async Task<IActionResult> DeleteMessage(int chatId, int messageId)
+        private static ChatResponse MapToResponse(Chat chat)
         {
-            var currentUser = await userManager.GetUserAsync(User);
-            if (currentUser == null) return Unauthorized(new { message = "Вы не авторизированы" });
-
-            var message = await db.Messages.FirstOrDefaultAsync(m => m.Id == messageId && m.ChatId == chatId);
-            if (message == null) return NotFound(new { message = "Сообщение не найдено" });
-            if (message.SenderId != currentUser.Id) return StatusCode(403, new { message = "Вы можете удалять только свои сообщения" });
-
-            db.Messages.Remove(message);
-            await db.SaveChangesAsync();
-
-            await hubContext.Clients.Group(chatId.ToString())
-                .SendAsync("MessageDeleted", messageId);
-
-            return Ok(new { message = "Сообщение удалено", messageId });
+            return new ChatResponse
+            {
+                Id = chat.Id,
+                Name = chat.Name,
+                Type = chat.Type,
+                CreatedAt = chat.CreatedAt,
+                Participants = [.. chat.Participants.Select(p => new ParticipantResponse
+                {
+                    UserId = p.UserId,
+                    UserName = p.User?.UserName,
+                    DisplayName = p.User?.DisplayName,
+                    Role = p.Role
+                })]
+            };
         }
-        #endregion
+
+        private AttachmentResponse MapAttachment(Attachment a)
+        {
+            return new AttachmentResponse
+            {
+                Id = a.Id,
+                Type = a.Type,
+                Url = (a as FileAttachment)?.Url ?? (a as LinkAttachment)?.Url,
+                Name = (a as FileAttachment)?.Name,
+                Size = (a as FileAttachment)?.Size,
+                Extension = (a as FileAttachment)?.Extension,
+            };
+        }
+
+        private string GetExtension(string contentType)
+        {
+            return contentType switch
+            {
+                "image/jpeg" => ".jpg",
+                "image/png" => ".png",
+                "image/gif" => ".gif",
+                "application/pdf" => ".pdf",
+                "text/plain" => ".txt",
+                "audio/mpeg" => ".mp3",
+                "video/mp4" => ".mp4",
+                _ => ".bin"
+            };
+        }
     }
 }

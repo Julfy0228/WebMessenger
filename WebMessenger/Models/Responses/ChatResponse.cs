@@ -9,5 +9,6 @@ namespace WebMessenger.Models.Responses
         public ChatType Type { get; set; }
         public DateTime CreatedAt { get; set; }
         public List<ParticipantResponse> Participants { get; set; } = [];
+        public LastMessageResponse? LastMessage { get; set; }
     }
 }

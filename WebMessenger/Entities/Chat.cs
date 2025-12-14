@@ -19,35 +19,9 @@ namespace WebMessenger.Entities
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
         [JsonIgnore]
-        public ICollection<Participant> Participants { get; private set; } = [];
+        public ICollection<Participant> Participants { get; set; } = [];
 
         [JsonIgnore]
-        public ICollection<Message> Messages { get; private set; } = [];
-
-        public Chat(string name, ChatType type)
-        {
-            Name = name ?? throw new ArgumentNullException(nameof(name));
-            Type = type;
-            CreatedAt = DateTime.UtcNow;
-        }
-
-        private Chat() { }
-
-        public Participant AddParticipant(User user, UserRole role = UserRole.Member)
-        {
-            if (Participants.Any(p => p.UserId == user.Id))
-                throw new InvalidOperationException("User already in chat");
-
-            var participant = new Participant
-            {
-                ChatId = Id,
-                UserId = user.Id,
-                Role = role,
-                JoinedAt = DateTime.UtcNow
-            };
-
-            Participants.Add(participant);
-            return participant;
-        }
+        public ICollection<Message> Messages { get; set; } = [];
     }
 }

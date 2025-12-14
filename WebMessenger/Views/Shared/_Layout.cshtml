@@ -1,4 +1,8 @@
-﻿<!DOCTYPE html>
+﻿@using Microsoft.AspNetCore.Identity
+@inject SignInManager<WebMessenger.Entities.User> SignInManager
+@inject UserManager<WebMessenger.Entities.User> UserManager
+
+<!DOCTYPE html>
 <html lang="ru">
 <head>
     <meta charset="utf-8" />
@@ -28,8 +32,19 @@
                             <a class="nav-link text-dark" asp-area="" asp-controller="Home" asp-action="Privacy">Privacy</a>
                         </li>
                     </ul>
+
                     <div class="d-flex">
-                        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#authModal">Регистрация / Вход</button>
+                        @if (SignInManager.IsSignedIn(User))
+                        {
+                            <a class="btn btn-outline-primary me-2" asp-controller="Home" asp-action="Chats">Чаты</a>
+                            <form method="post" asp-controller="User" asp-action="logout">
+                                <button type="submit" class="btn btn-link">Выйти</button>
+                            </form>
+                        }
+                        else
+                        {
+                            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#authModal">Регистрация / Вход</button>
+                        }
                     </div>
                 </div>
             </div>
@@ -48,7 +63,6 @@
         </div>
     </footer>
 
-    <!-- Модальное окно с вкладками -->
     <div class="modal fade" id="authModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
@@ -59,7 +73,6 @@
                 </div>
 
                 <div class="modal-body">
-                    <!-- Вкладки -->
                     <ul class="nav nav-tabs" id="authTabs" role="tablist">
                         <li class="nav-item" role="presentation">
                             <button class="nav-link active" id="login-tab" data-bs-toggle="tab" data-bs-target="#loginTab" type="button" role="tab">Вход</button>
@@ -69,12 +82,9 @@
                         </li>
                     </ul>
 
-                    <!-- Содержимое вкладок -->
                     <div class="tab-content mt-3">
-                        <!-- Ошибки -->
                         <div id="authError" class="alert alert-danger d-none"></div>
 
-                        <!-- Вход -->
                         <div class="tab-pane fade show active" id="loginTab" role="tabpanel">
                             <form id="loginForm">
                                 <div class="mb-3">
@@ -90,7 +100,6 @@
                             </form>
                         </div>
 
-                        <!-- Регистрация -->
                         <div class="tab-pane fade" id="registerTab" role="tabpanel">
                             <form id="registerForm">
                                 <div class="mb-3">
@@ -171,8 +180,7 @@
                 body: JSON.stringify(data)
             });
             if (res.ok) {
-                bootstrap.Modal.getInstance(document.getElementById("authModal")).hide();
-                location.reload();
+                window.location.href = "/Home/Chats";
             } else {
                 const errorData = await res.json();
                 showError(errorData.message ?? "Ошибка входа");

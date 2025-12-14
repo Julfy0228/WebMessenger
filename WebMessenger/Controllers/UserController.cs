@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using WebMessenger.Entities;
 using WebMessenger.Models.Requests;
 using WebMessenger.Models.Responses;
@@ -13,6 +14,7 @@ namespace WebMessenger.Controllers
         SignInManager<User> signInManager,
         IEmailSender emailSender) : ControllerBase
     {
+
         #region Авторизация
         [HttpPost("register")]
         public async Task<IActionResult> Register([FromBody] RegisterRequest request)
@@ -39,7 +41,8 @@ namespace WebMessenger.Controllers
         private async Task SendConfirmationEmail(User user)
         {
             var token = await userManager.GenerateEmailConfirmationTokenAsync(user);
-            var confirmUrl = Url.Action(nameof(ConfirmEmail), "User",
+
+            var confirmUrl = Url.Action("ConfirmEmail", "Home",
                 new { userId = user.Id, token }, Request.Scheme);
 
             var html = System.IO.File.ReadAllText("Views/Email/ConfirmEmail.html")
@@ -117,7 +120,7 @@ namespace WebMessenger.Controllers
             return Ok(response);
         }
 
-        [HttpGet("{id}")]
+        [HttpGet("{id:int}")]
         public async Task<IActionResult> GetUserById(int id)
         {
             var user = await userManager.FindByIdAsync(id.ToString());
@@ -135,6 +138,47 @@ namespace WebMessenger.Controllers
             };
 
             return Ok(response);
+        }
+
+        [HttpGet]
+        public async Task<IActionResult> FindByUsername([FromQuery] string? username)
+        {
+            if (string.IsNullOrWhiteSpace(username))
+                return BadRequest(new { message = "Параметр username обязателен." });
+
+            var exact = await userManager.Users
+                .Where(u => u.UserName!.ToLower() == username.ToLower())
+                .Select(u => new OtherUserResponse
+                {
+                    Id = u.Id,
+                    UserName = u.UserName,
+                    DisplayName = u.DisplayName,
+                    AvatarUrl = u.AvatarUrl,
+                    IsOnline = u.IsOnline,
+                    LastOnline = u.LastOnline
+                })
+                .FirstOrDefaultAsync();
+
+            if (exact != null)
+                return Ok(exact);
+
+            var partial = await userManager.Users
+                .Where(u => u.UserName!.ToLower().Contains(username.ToLower()))
+                .Select(u => new OtherUserResponse
+                {
+                    Id = u.Id,
+                    UserName = u.UserName,
+                    DisplayName = u.DisplayName,
+                    AvatarUrl = u.AvatarUrl,
+                    IsOnline = u.IsOnline,
+                    LastOnline = u.LastOnline
+                })
+                .FirstOrDefaultAsync();
+
+            if (partial != null)
+                return Ok(partial);
+
+            return NotFound(new { message = "Пользователь не найден." });
         }
         #endregion
 

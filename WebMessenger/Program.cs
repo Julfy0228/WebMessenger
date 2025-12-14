@@ -43,10 +43,8 @@ namespace WebMessenger
                 options.Cookie.Name = "WebMessenger.Auth";
                 options.Cookie.HttpOnly = true;
                 options.ExpireTimeSpan = TimeSpan.FromDays(7);
-                options.SlidingExpiration = true;
-                options.LoginPath = "/api/auth/login";
-                options.LogoutPath = "/api/auth/logout";
-                options.AccessDeniedPath = "/api/auth/access-denied";
+                options.LoginPath = "/";
+                options.LogoutPath = "/api/user/logout";
             });
 
             builder.Services.AddAuthorization(options =>
@@ -80,7 +78,7 @@ namespace WebMessenger
 
             app.MapControllers();
 
-            // SignalR ChatHub
+            // Chat Hub
             app.MapHub<Hubs.ChatHub>("/chathub");
 
             app.MapControllerRoute(
