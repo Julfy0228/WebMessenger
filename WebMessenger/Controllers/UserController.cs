@@ -180,6 +180,21 @@ namespace WebMessenger.Controllers
 
             return NotFound(new { message = "Пользователь не найден." });
         }
+
+        [HttpPut("update-displayname")]
+        public async Task<IActionResult> UpdateDisplayName([FromBody] string newName)
+        {
+            var user = await userManager.GetUserAsync(User);
+            if (user == null) return Unauthorized("Пользователь не авторизован.");
+
+            user.DisplayName = newName;
+            var result = await userManager.UpdateAsync(user);
+
+            if (!result.Succeeded)
+                return BadRequest(result.Errors);
+
+            return Ok(new { message = "Отображаемое имя обновлено" });
+        }
         #endregion
 
         #region Обновление данных для авторизации

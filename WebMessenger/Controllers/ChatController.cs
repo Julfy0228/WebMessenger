@@ -289,6 +289,137 @@ namespace WebMessenger.Controllers
             }));
         }
 
+        [HttpPost("{chatId}/transfer-ownership")]
+        public async Task<IActionResult> TransferOwnership(int chatId, [FromBody] TransferOwnerRequest req)
+        {
+            var currentUser = await userManager.GetUserAsync(User);
+            if (currentUser == null) return Unauthorized(new { message = "Вы не авторизированы" });
+
+            var chat = await db.Chats
+                .Include(c => c.Participants)
+                .FirstOrDefaultAsync(c => c.Id == chatId);
+
+            if (chat == null) return NotFound(new { message = "Чат не найден" });
+
+            var caller = chat.Participants.FirstOrDefault(p => p.UserId == currentUser.Id);
+            if (caller == null || caller.Role != UserRole.Owner)
+                return StatusCode(403, new { message = "Только владелец может передавать права" });
+
+            var newOwner = chat.Participants.FirstOrDefault(p => p.UserId == req.NewOwnerId);
+            if (newOwner == null)
+                return BadRequest(new { message = "Пользователь не найден в этом чате" });
+
+            if (newOwner.UserId == currentUser.Id)
+                return BadRequest(new { message = "Вы уже являетесь владельцем" });
+
+            caller.Role = UserRole.Member;
+            newOwner.Role = UserRole.Owner;
+
+            await db.SaveChangesAsync();
+
+            await hubContext.Clients.Group(chatId.ToString()).SendAsync("OwnershipTransferred", chatId);
+
+            return Ok(new { message = "Права успешно переданы" });
+        }
+
+        [HttpDelete("{chatId}")]
+        public async Task<IActionResult> DeleteChat(int chatId)
+        {
+            var currentUser = await userManager.GetUserAsync(User);
+            var chat = await db.Chats.Include(c => c.Participants).FirstOrDefaultAsync(c => c.Id == chatId);
+
+            if (chat == null) return NotFound();
+
+            var participant = chat.Participants.FirstOrDefault(p => p.UserId == currentUser.Id);
+            if (participant == null || participant.Role != UserRole.Owner)
+                return StatusCode(403, new { message = "Только владелец может удалить чат" });
+
+            db.Chats.Remove(chat);
+            await db.SaveChangesAsync();
+
+            await hubContext.Clients.Group(chatId.ToString()).SendAsync("ChatDeleted", chatId);
+
+            return Ok(new { message = "Чат удален" });
+        }
+
+        [HttpPost("{chatId}/promote")]
+        public async Task<IActionResult> PromoteToAdmin(int chatId, [FromBody] ChatActionRequest req)
+        {
+            var currentUser = await userManager.GetUserAsync(User);
+            var chat = await db.Chats.Include(c => c.Participants).FirstOrDefaultAsync(c => c.Id == chatId);
+
+            if (chat == null) return NotFound();
+
+            var caller = chat.Participants.FirstOrDefault(p => p.UserId == currentUser.Id);
+            if (caller == null || caller.Role != UserRole.Owner) return Forbid();
+
+            var target = chat.Participants.FirstOrDefault(p => p.UserId == req.UserId);
+            if (target == null) return BadRequest(new { message = "Пользователь не найден" });
+
+            target.Role = UserRole.Admin;
+            await db.SaveChangesAsync();
+
+            await hubContext.Clients.Group(chatId.ToString()).SendAsync("RoleUpdated", chatId);
+            return Ok();
+        }
+
+        [HttpPost("{chatId}/demote")]
+        public async Task<IActionResult> DemoteFromAdmin(int chatId, [FromBody] ChatActionRequest req)
+        {
+            var currentUser = await userManager.GetUserAsync(User);
+            var chat = await db.Chats.Include(c => c.Participants).FirstOrDefaultAsync(c => c.Id == chatId);
+
+            if (chat == null) return NotFound();
+
+            var caller = chat.Participants.FirstOrDefault(p => p.UserId == currentUser.Id);
+            if (caller == null || caller.Role != UserRole.Owner) return Forbid();
+
+            var target = chat.Participants.FirstOrDefault(p => p.UserId == req.UserId);
+            if (target == null) return BadRequest(new { message = "Пользователь не найден" });
+
+            if (target.Role != UserRole.Admin)
+                return BadRequest(new { message = "Пользователь не является администратором" });
+
+            target.Role = UserRole.Member;
+            await db.SaveChangesAsync();
+
+            await hubContext.Clients.Group(chatId.ToString()).SendAsync("RoleUpdated", chatId);
+            return Ok();
+        }
+
+        [HttpPost("{chatId}/kick")]
+        public async Task<IActionResult> KickParticipant(int chatId, [FromBody] ChatActionRequest req)
+        {
+            var currentUser = await userManager.GetUserAsync(User);
+            var chat = await db.Chats.Include(c => c.Participants).FirstOrDefaultAsync(c => c.Id == chatId);
+
+            if (chat == null) return NotFound();
+
+            var caller = chat.Participants.FirstOrDefault(p => p.UserId == currentUser.Id);
+            var target = chat.Participants.FirstOrDefault(p => p.UserId == req.UserId);
+
+            if (caller == null || target == null) return BadRequest();
+
+            bool canKick = false;
+
+            if (caller.Role == UserRole.Owner)
+            {
+                if (target.UserId != currentUser!.Id) canKick = true;
+            }
+            else if (caller.Role == UserRole.Admin)
+            {
+                if (target.Role == UserRole.Member) canKick = true;
+            }
+
+            if (!canKick) return StatusCode(403, new { message = "Недостаточно прав для исключения этого участника" });
+
+            db.Participants.Remove(target);
+            await db.SaveChangesAsync();
+
+            await hubContext.Clients.Group(chatId.ToString()).SendAsync("UserKicked", chatId, req.UserId);
+            return Ok();
+        }
+
         private static ChatResponse MapToResponse(Chat chat)
         {
             return new ChatResponse
