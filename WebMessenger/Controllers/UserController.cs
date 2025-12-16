@@ -195,6 +195,30 @@ namespace WebMessenger.Controllers
 
             return Ok(new { message = "Отображаемое имя обновлено" });
         }
+
+        [HttpPost("avatar")]
+        public async Task<IActionResult> UploadAvatar(IFormFile file, [FromServices] IWebHostEnvironment env)
+        {
+            var user = await userManager.GetUserAsync(User);
+            if (user == null) return Unauthorized();
+
+            if (file == null || file.Length == 0) return BadRequest("Файл не выбран");
+
+            var uploadPath = Path.Combine(env.WebRootPath, "uploads", "avatars");
+            if (!Directory.Exists(uploadPath)) Directory.CreateDirectory(uploadPath);
+
+            var ext = Path.GetExtension(file.FileName);
+            var fileName = $"user_{user.Id}_{Guid.NewGuid()}{ext}";
+            var filePath = Path.Combine(uploadPath, fileName);
+
+            using (var stream = new FileStream(filePath, FileMode.Create))
+                await file.CopyToAsync(stream);
+
+            user.AvatarUrl = $"/uploads/avatars/{fileName}";
+            await userManager.UpdateAsync(user);
+
+            return Ok(new { avatarUrl = user.AvatarUrl });
+        }
         #endregion
 
         #region Обновление данных для авторизации

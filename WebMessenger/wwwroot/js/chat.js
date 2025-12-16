@@ -5,7 +5,6 @@ let myUserId = 0;
 let pendingAttachments = [];
 
 const roleNames = { 0: "Участник", 1: "Админ", 2: "Владелец", "Member": "Участник", "Admin": "Админ", "Owner": "Владелец" };
-
 const connection = new signalR.HubConnectionBuilder().withUrl("/chathub").build();
 
 const els = {
@@ -25,7 +24,15 @@ const els = {
     addParticipantForm: document.getElementById("addParticipantForm"),
     profileContent: document.getElementById("profileContent"),
     currentUserBlock: document.getElementById("currentUserBlock"),
-    myProfilePreview: document.getElementById("myProfilePreview"),
+    myProfileAvatarPreview: document.getElementById("myProfileAvatarPreview"),
+    uploadUserAvatarInput: document.getElementById("uploadUserAvatarInput"),
+
+    chatInfoName: document.getElementById("chatInfoName"),
+    chatInfoAvatar: document.getElementById("chatInfoAvatar"),
+    chatInfoCount: document.getElementById("chatInfoCount"),
+    btnChangeChatAvatar: document.getElementById("btnChangeChatAvatar"),
+    uploadChatAvatarInput: document.getElementById("uploadChatAvatarInput"),
+
     updateDisplayNameForm: document.getElementById("updateDisplayNameForm"),
     updateUsernameForm: document.getElementById("updateUsernameForm"),
     updateEmailForm: document.getElementById("updateEmailForm"),
@@ -37,7 +44,6 @@ const els = {
     dragOverlay: document.getElementById("dragOverlay"),
     attachmentsPreview: document.getElementById("attachmentsPreview"),
     fileInput: document.getElementById("fileInput"),
-
     btnAddMember: document.getElementById("btnAddMember"),
     btnDeleteChat: document.getElementById("btnDeleteChat")
 };
@@ -55,34 +61,24 @@ fetch("/api/user/me").then(r => r.json()).then(u => {
 });
 
 connection.on("ReceiveMessage", (message) => {
-    if (message.chatId === currentChatId) {
-        renderMessage(message);
-        scrollToBottom();
-    }
+    if (message.chatId === currentChatId) { renderMessage(message); scrollToBottom(); }
     updateLastMessageInList(message.chatId, message.text, message.sentAt);
 });
-
 connection.on("ChatCreated", () => loadChats());
 connection.on("ParticipantAdded", (chatId) => { if (currentChatId === chatId) openChatInfo(chatId); loadChats(); });
 connection.on("OwnershipTransferred", (chatId) => { if (currentChatId === chatId) openChatInfo(chatId); });
 connection.on("RoleUpdated", (chatId) => { if (currentChatId === chatId) openChatInfo(chatId); });
+connection.on("ChatDeleted", (chatId) => { if (currentChatId === chatId) location.reload(); else loadChats(); });
+connection.on("UserKicked", (chatId, userId) => { if (userId === myUserId) { if (currentChatId === chatId) location.reload(); else loadChats(); } else { if (currentChatId === chatId) openChatInfo(chatId); loadChats(); } });
 
-connection.on("ChatDeleted", (chatId) => {
-    if (currentChatId === chatId) {
-        location.reload();
-    } else {
-        loadChats();
-    }
-});
+connection.on("ChatAvatarUpdated", (chatId, url) => {
 
-connection.on("UserKicked", (chatId, userId) => {
-    if (userId === myUserId) {
-        if (currentChatId === chatId) location.reload();
-        else loadChats();
-    } else {
-        if (currentChatId === chatId) openChatInfo(chatId);
-        loadChats();
-    }
+    if (currentChatId === chatId) els.chatAvatarHeader.src = url;
+
+    loadChats();
+
+    const modalOpen = document.getElementById('chatInfoModal').classList.contains('show');
+    if (modalOpen && currentChatId === chatId) els.chatInfoAvatar.src = url;
 });
 
 els.sendForm.addEventListener("submit", (e) => { e.preventDefault(); sendMessage(); });
@@ -105,7 +101,7 @@ els.findUserForm.addEventListener("submit", async e => {
             const user = await res.json();
             document.getElementById("searchResAvatar").src = getAvatar(user.avatarUrl, user.displayName || user.userName);
             document.getElementById("searchResName").textContent = user.displayName || user.userName;
-            document.getElementById("searchResNick").textContent = "@" + user.userName;
+            document.getElementById("searchResNick").textContent = "@" + user.userName; // @ вместо #
             els.searchResult.classList.remove("d-none"); els.searchResult.classList.add("d-flex");
             document.getElementById("btnStartPrivate").onclick = () => { createPrivateChat(user.id); bootstrap.Modal.getInstance(document.getElementById("createChatModal")).hide(); };
         } else els.searchError.classList.remove("d-none");
@@ -127,7 +123,6 @@ els.addParticipantForm.addEventListener("submit", async e => {
 
 els.chatHeaderClickable.addEventListener("click", () => {
     if (!currentChatId) return;
-
     if (currentChatType === 1) {
         const partnerId = els.chatAvatarHeader.dataset.partnerId;
         if (partnerId) openProfile(partnerId);
@@ -147,6 +142,41 @@ els.updateDisplayNameForm.addEventListener("submit", e => { e.preventDefault(); 
 els.updateUsernameForm.addEventListener("submit", e => { e.preventDefault(); handleUpdate("/api/user/update-username", document.getElementById("editUsername").value); });
 els.updateEmailForm.addEventListener("submit", e => { e.preventDefault(); handleUpdate("/api/user/update-email", document.getElementById("editEmail").value); });
 els.changePasswordForm.addEventListener("submit", e => { e.preventDefault(); handleUpdate("/api/user/change-password", { currentPassword: document.getElementById("currPass").value, newPassword: document.getElementById("newPass").value }); });
+
+els.uploadUserAvatarInput.addEventListener("change", async e => {
+    if (e.target.files.length === 0) return;
+    const formData = new FormData();
+    formData.append("file", e.target.files[0]);
+
+    try {
+        const res = await fetch("/api/user/avatar", { method: "POST", body: formData });
+        if (res.ok) {
+            const data = await res.json();
+
+            els.myProfileAvatarPreview.src = data.avatarUrl;
+
+            const imgBlock = els.currentUserBlock.querySelector('img');
+            if (imgBlock) imgBlock.src = data.avatarUrl;
+        } else alert("Ошибка загрузки аватара");
+    } catch (err) { alert("Ошибка: " + err); }
+});
+
+els.uploadChatAvatarInput.addEventListener("change", async e => {
+    if (e.target.files.length === 0) return;
+    const formData = new FormData();
+    formData.append("file", e.target.files[0]);
+
+    try {
+        const res = await fetch(`/api/chat/${currentChatId}/avatar`, { method: "POST", body: formData });
+        if (res.ok) {
+            const data = await res.json();
+            els.chatInfoAvatar.src = data.avatarUrl;
+        } else {
+            const err = await res.json();
+            alert(err.message || "Ошибка загрузки");
+        }
+    } catch (err) { alert("Ошибка: " + err); }
+});
 
 els.dropZone.addEventListener("dragenter", e => { e.preventDefault(); if (currentChatId) els.dragOverlay.classList.remove("d-none"); els.dragOverlay.classList.add("d-flex"); });
 els.dragOverlay.addEventListener("dragleave", e => { e.preventDefault(); els.dragOverlay.classList.add("d-none"); els.dragOverlay.classList.remove("d-flex"); });
@@ -175,8 +205,8 @@ window.removeAttachment = function (i, btn) { btn.parentElement.remove(); delete
 
 function renderMyProfile(u) {
     const avatar = getAvatar(u.avatarUrl, u.displayName || u.userName);
-    els.currentUserBlock.innerHTML = `<img src="${avatar}" class="rounded-circle" width="38" height="38"><div class="overflow-hidden"><div class="fw-bold text-truncate" style="font-size:0.9rem;">${u.displayName || u.userName}</div><div class="small text-muted text-truncate" style="font-size:0.75rem;">#${u.userName}</div></div><div class="ms-auto text-secondary"><i class="bi bi-gear-fill"></i></div>`;
-    els.myProfilePreview.innerHTML = `<img src="${avatar}" class="rounded-circle shadow-sm" width="80" height="80"><h5 class="mt-2">${u.displayName || u.userName}</h5><div class="text-muted small">@${u.userName}</div>`;
+    els.currentUserBlock.innerHTML = `<img src="${avatar}" class="rounded-circle" width="38" height="38"><div class="overflow-hidden"><div class="fw-bold text-truncate" style="font-size:0.9rem;">${u.displayName || u.userName}</div><div class="small text-muted text-truncate" style="font-size:0.75rem;">@${u.userName}</div></div><div class="ms-auto text-secondary"><i class="bi bi-gear-fill"></i></div>`;
+    els.myProfileAvatarPreview.src = avatar;
     document.getElementById("editDisplayName").value = u.displayName || ""; document.getElementById("editUsername").value = u.userName || ""; document.getElementById("editEmail").value = u.email || "";
 }
 
@@ -185,11 +215,18 @@ function loadChats() {
         els.chatsList.innerHTML = "";
         chats.forEach(chat => {
             const isActive = chat.id === currentChatId ? 'active' : '';
-            let displayName = chat.name; let displayAvatar = getAvatar(null, chat.name);
+
+            let displayName = chat.name;
+
+            let displayAvatar = getAvatar(chat.avatarUrl, chat.name);
+
             const count = chat.participants ? chat.participants.length : 1;
             if (chat.type === 1) {
                 const other = chat.participants.find(p => p.userId !== myUserId);
-                if (other) { displayName = other.displayName || other.userName; displayAvatar = getAvatar(null, displayName); }
+                if (other) {
+                    displayName = other.displayName || other.userName;
+                    displayAvatar = getAvatar(other.avatarUrl || null, displayName);
+                }
             }
             const div = document.createElement("div"); div.className = `list-group-item chat-item py-3 ${isActive}`; div.id = `chat-item-${chat.id}`;
             div.onclick = () => selectChat(chat, div, displayName, displayAvatar, count);
@@ -201,38 +238,26 @@ function loadChats() {
 
 function selectChat(chat, element, nameOverride, avatarOverride, count) {
     if (currentChatId === chat.id) return;
-    currentChatId = chat.id;
-    currentChatType = chat.type;
-
+    currentChatId = chat.id; currentChatType = chat.type;
     document.querySelectorAll(".chat-item").forEach(i => i.classList.remove("active"));
     if (element) element.classList.add("active");
     els.placeholder.classList.add("d-none"); els.placeholder.classList.remove("d-flex");
     els.chatContent.classList.remove("d-none"); els.chatContent.classList.add("d-flex");
-
     els.chatTitle.textContent = nameOverride || chat.name;
     els.chatAvatarHeader.src = avatarOverride || getAvatar(null, chat.name);
-
-    if (chat.type === 1) {
-        const other = chat.participants.find(p => p.userId !== myUserId);
-        if (other) els.chatAvatarHeader.dataset.partnerId = other.userId;
-    }
-
+    if (chat.type === 1) { const other = chat.participants.find(p => p.userId !== myUserId); if (other) els.chatAvatarHeader.dataset.partnerId = other.userId; }
     els.chatHeaderStatus.textContent = (chat.type === 1) ? "" : `${count} участников`;
     els.messagesList.innerHTML = ""; lastSenderId = null; els.messageInput.value = ""; els.messageInput.focus();
     pendingAttachments = []; els.attachmentsPreview.innerHTML = ""; els.attachmentsPreview.classList.add("d-none");
-
     connection.invoke("JoinChat", chat.id);
     fetch(`/api/chat/${chat.id}/messages`).then(r => r.json()).then(messages => { messages.forEach(renderMessage); scrollToBottom(); });
 }
 
 function renderMessage(m) {
-    const isMine = m.senderId === myUserId;
-    const sameSender = lastSenderId === m.senderId;
-    lastSenderId = m.senderId;
+    const isMine = m.senderId === myUserId; const sameSender = lastSenderId === m.senderId; lastSenderId = m.senderId;
     const wrapper = document.createElement("div"); wrapper.className = `d-flex gap-2 ${isMine ? "flex-row-reverse" : "flex-row"} ${sameSender ? "mt-1" : "mt-3"}`;
     const avatarVisibility = (!isMine && !sameSender) ? "visible" : "hidden";
     const avatarSrc = getAvatar(null, m.senderName);
-
     let attHtml = "";
     if (m.attachments && m.attachments.length > 0) {
         attHtml = `<div class="d-flex flex-wrap gap-2 mb-2">`;
@@ -246,81 +271,49 @@ function renderMessage(m) {
     els.messagesList.appendChild(wrapper);
 }
 
-function sendMessage() {
-    const text = els.messageInput.value.trim(); const valid = pendingAttachments.filter(a => a);
-    if ((!text && valid.length === 0) || !currentChatId) return;
-    els.messageInput.value = ""; pendingAttachments = []; els.attachmentsPreview.innerHTML = ""; els.attachmentsPreview.classList.add("d-none");
-    fetch(`/api/chat/${currentChatId}/messages`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, attachments: valid }) }).catch(() => els.messageInput.value = text);
-}
-function updateLastMessageInList(chatId, t, time) { const el = document.getElementById(`last-msg-${chatId}`); if (el) el.textContent = t || "Вложение"; }
-function scrollToBottom() { els.messagesContainer.scrollTop = els.messagesContainer.scrollHeight; }
-
 function openChatInfo(chatId) {
     fetch(`/api/chat/${chatId}`).then(r => r.json()).then(chat => {
         els.participantsList.innerHTML = "";
 
-        if (chat.type === 1) {
-        }
+        els.chatInfoName.textContent = chat.name;
+        els.chatInfoAvatar.src = getAvatar(null, chat.name);
+        els.chatInfoCount.textContent = `${chat.participants.length} участников`;
+
+        if (chat.type === 1) els.btnAddMember.classList.add("d-none"); else els.btnAddMember.classList.remove("d-none");
 
         const myParticipant = chat.participants.find(p => p.userId === myUserId);
         const myRole = myParticipant ? (typeof myParticipant.role === 'string' ? myParticipant.role : roleNames[myParticipant.role]) : "Member";
-
         const isOwner = myRole === "Owner" || myRole === "Владелец" || myParticipant?.role === 2;
         const isAdmin = myRole === "Admin" || myRole === "Админ" || myParticipant?.role === 1;
 
-        if (isOwner) els.btnDeleteChat.classList.remove("d-none");
-        else els.btnDeleteChat.classList.add("d-none");
+        if (isOwner) els.btnDeleteChat.classList.remove("d-none"); else els.btnDeleteChat.classList.add("d-none");
 
-        if (chat.type === 1) els.btnAddMember.classList.add("d-none");
-        else els.btnAddMember.classList.remove("d-none");
+        if (chat.type === 0 && (isOwner || isAdmin)) els.btnChangeChatAvatar.classList.remove("d-none");
+        else els.btnChangeChatAvatar.classList.add("d-none");
 
         chat.participants.forEach(p => {
             const isMe = p.userId === myUserId;
             const pRoleName = roleNames[p.role] || p.role;
             const pIsOwner = p.role === 2 || pRoleName === "Owner";
             const pIsAdmin = p.role === 1 || pRoleName === "Admin";
-
             let buttonsHtml = "";
-
             if (!isMe && chat.type === 0) {
-                let canKick = false;
-                if (isOwner) canKick = true;
-                if (isAdmin && !pIsOwner && !pIsAdmin) canKick = true;
-
-                let canPromote = false;
-                if (isOwner && !pIsAdmin && !pIsOwner) canPromote = true;
-
-                let canDemote = false;
-                if (isOwner && pIsAdmin) canDemote = true;
-
+                let canKick = isOwner || (isAdmin && !pIsOwner && !pIsAdmin);
+                let canPromote = isOwner && !pIsAdmin && !pIsOwner;
+                let canDemote = isOwner && pIsAdmin;
                 let canTransfer = isOwner;
-
                 if (canTransfer) buttonsHtml += `<button class="btn btn-sm btn-outline-warning ms-1" title="Передать владение" onclick="transferOwnership(${p.userId})"><i class="bi bi-award"></i></button>`;
-
                 if (canPromote) buttonsHtml += `<button class="btn btn-sm btn-outline-success ms-1" title="Сделать админом" onclick="promoteToAdmin(${p.userId})"><i class="bi bi-arrow-up-circle"></i></button>`;
-
-                if (canDemote) buttonsHtml += `<button class="btn btn-sm btn-outline-secondary ms-1" title="Разжаловать до участника" onclick="demoteToMember(${p.userId})"><i class="bi bi-arrow-down-circle"></i></button>`;
-
+                if (canDemote) buttonsHtml += `<button class="btn btn-sm btn-outline-secondary ms-1" title="Разжаловать" onclick="demoteToMember(${p.userId})"><i class="bi bi-arrow-down-circle"></i></button>`;
                 if (canKick) buttonsHtml += `<button class="btn btn-sm btn-outline-danger ms-1" title="Исключить" onclick="kickUser(${p.userId})"><i class="bi bi-x-lg"></i></button>`;
             }
-
             const li = document.createElement("li");
             li.className = "list-group-item d-flex align-items-center gap-3 px-0 border-0";
-            li.innerHTML = `
-                <img src="${getAvatar(null, p.displayName || p.userName)}" class="rounded-circle profile-link" width="36" height="36" data-id="${p.userId}">
-                <div class="flex-grow-1">
-                    <div class="fw-bold profile-link" data-id="${p.userId}">${p.displayName || p.userName}</div>
-                    <small class="text-muted">@${p.userName}</small>
-                </div>
-                <span class="badge bg-light text-dark border">${roleNames[p.role] || p.role}</span>
-                <div class="d-flex">${buttonsHtml}</div>
-            `;
+            li.innerHTML = `<img src="${getAvatar(null, p.displayName || p.userName)}" class="rounded-circle profile-link" width="36" height="36" data-id="${p.userId}"><div class="flex-grow-1"><div class="fw-bold profile-link" data-id="${p.userId}">${p.displayName || p.userName}</div><small class="text-muted">@${p.userName}</small></div><span class="badge bg-light text-dark border">${roleNames[p.role] || p.role}</span><div class="d-flex">${buttonsHtml}</div>`;
             els.participantsList.appendChild(li);
         });
     });
 }
-
-document.addEventListener("click", e => { const t = e.target.closest(".profile-link"); if (t) openProfile(t.dataset.id); });
 
 function openProfile(id) {
     fetch(`/api/user/${id}`).then(r => r.json()).then(u => {
@@ -330,51 +323,10 @@ function openProfile(id) {
     });
 }
 
-window.createPrivateChat = async function (id) {
-    const res = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "P", type: 1, participantIds: [parseInt(id)] }) });
-    if (res.ok) { const c = await res.json(); bootstrap.Modal.getOrCreateInstance(document.getElementById('profileModal')).hide(); await loadChats(); setTimeout(() => document.getElementById(`chat-item-${c.id}`)?.click(), 100); }
-    else alert("Ошибка");
-};
-
-window.transferOwnership = async function (id) {
-    if (!confirm("Передать права владельца?")) return;
-    const res = await fetch(`/api/chat/${currentChatId}/transfer-ownership`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ newOwnerId: id }) });
-    if (res.ok) openChatInfo(currentChatId); else alert("Ошибка");
-};
-
-window.deleteChat = async function () {
-    if (!confirm("Удалить чат? Это действие нельзя отменить.")) return;
-    const res = await fetch(`/api/chat/${currentChatId}`, { method: "DELETE" });
-    if (res.ok) { bootstrap.Modal.getInstance(document.getElementById('chatInfoModal')).hide(); location.reload(); }
-    else alert("Ошибка удаления");
-};
-
-window.promoteToAdmin = async function (id) {
-    if (!confirm("Назначить администратором?")) return;
-    const res = await fetch(`/api/chat/${currentChatId}/promote`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId: id }) });
-    if (res.ok) openChatInfo(currentChatId); else alert("Ошибка");
-};
-
-window.demoteToMember = async function (id) {
-    if (!confirm("Снять полномочия администратора?")) return;
-    const res = await fetch(`/api/chat/${currentChatId}/demote`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: id })
-    });
-
-    if (res.ok) {
-        openChatInfo(currentChatId);
-    } else {
-        const err = await res.json();
-        alert("Ошибка: " + (err.message || "Не удалось выполнить действие"));
-    }
-};
-
-window.kickUser = async function (id) {
-    if (!confirm("Исключить пользователя из чата?")) return;
-    const res = await fetch(`/api/chat/${currentChatId}/kick`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId: id }) });
-    if (res.ok) openChatInfo(currentChatId); else alert("Ошибка");
-};
-
+window.createPrivateChat = async function (id) { const res = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "P", type: 1, participantIds: [parseInt(id)] }) }); if (res.ok) { const c = await res.json(); bootstrap.Modal.getOrCreateInstance(document.getElementById('profileModal')).hide(); bootstrap.Modal.getOrCreateInstance(document.getElementById('createChatModal')).hide(); await loadChats(); setTimeout(() => document.getElementById(`chat-item-${c.id}`)?.click(), 100); } else alert("Ошибка"); };
+window.transferOwnership = async function (id) { if (!confirm("Передать права?")) return; const res = await fetch(`/api/chat/${currentChatId}/transfer-ownership`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ newOwnerId: id }) }); if (res.ok) openChatInfo(currentChatId); else alert("Ошибка"); };
+window.deleteChat = async function () { if (!confirm("Удалить чат?")) return; const res = await fetch(`/api/chat/${currentChatId}`, { method: "DELETE" }); if (res.ok) { bootstrap.Modal.getInstance(document.getElementById('chatInfoModal')).hide(); location.reload(); } else alert("Ошибка"); };
+window.promoteToAdmin = async function (id) { if (!confirm("Назначить админом?")) return; const res = await fetch(`/api/chat/${currentChatId}/promote`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId: id }) }); if (res.ok) openChatInfo(currentChatId); else alert("Ошибка"); };
+window.demoteToMember = async function (id) { if (!confirm("Разжаловать?")) return; const res = await fetch(`/api/chat/${currentChatId}/demote`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId: id }) }); if (res.ok) openChatInfo(currentChatId); else alert("Ошибка"); };
+window.kickUser = async function (id) { if (!confirm("Исключить?")) return; const res = await fetch(`/api/chat/${currentChatId}/kick`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId: id }) }); if (res.ok) openChatInfo(currentChatId); else alert("Ошибка"); };
 window.logout = function () { fetch("/api/user/logout", { method: "POST" }).then(() => window.location.href = "/"); };

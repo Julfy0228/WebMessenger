@@ -7,70 +7,76 @@
 
 <div class="container-fluid p-0 d-flex position-relative" style="height: 100vh; overflow: hidden; background-color: #fff;">
 
+    <!-- ЛЕВАЯ КОЛОНКА -->
     <div class="col-4 col-md-3 border-end d-flex flex-column bg-light">
-        
+        <!-- Шапка -->
         <div class="px-3 border-bottom bg-white d-flex align-items-center justify-content-between flex-shrink-0" style="height: 60px;">
             <h5 class="m-0 fw-bold text-primary">WebMessenger</h5>
-            <button class="btn btn-sm btn-outline-primary rounded-circle d-flex align-items-center justify-content-center p-0" 
-                    style="width: 32px; height: 32px;" 
+            <button class="btn btn-sm btn-outline-primary rounded-circle d-flex align-items-center justify-content-center p-0"
+                    style="width: 32px; height: 32px;"
                     data-bs-toggle="modal" data-bs-target="#createChatModal"
                     title="Создать новый чат">
                 <i class="bi bi-plus-lg"></i>
             </button>
         </div>
 
+        <!-- Список чатов -->
         <div class="flex-grow-1 overflow-auto custom-scroll" style="min-height: 0;">
             <div id="chatsList" class="list-group list-group-flush"></div>
         </div>
 
-        <div id="currentUserBlock" class="mt-auto border-top bg-secondary bg-opacity-10 p-2 d-flex align-items-center gap-2 cursor-pointer user-select-none hover-darken" 
-             style="height: 60px; transition: background 0.2s;" 
+        <!-- Мой профиль -->
+        <div id="currentUserBlock" class="mt-auto border-top bg-secondary bg-opacity-10 p-2 d-flex align-items-center gap-2 cursor-pointer user-select-none hover-darken"
+             style="height: 60px; transition: background 0.2s;"
              title="Настройки профиля">
             <div class="spinner-border spinner-border-sm text-secondary ms-2" role="status"></div>
         </div>
     </div>
 
+    <!-- ПРАВАЯ КОЛОНКА -->
     <div class="col-8 col-md-9 d-flex flex-column position-relative bg-white" id="dropZone">
-        <div id="dragOverlay" class="position-absolute top-0 start-0 w-100 h-100 d-none flex-column align-items-center justify-content-center bg-white bg-opacity-75" 
-             style="z-index: 1000; backdrop-filter: blur(2px);">
+        <div id="dragOverlay" class="position-absolute top-0 start-0 w-100 h-100 d-none flex-column align-items-center justify-content-center bg-white bg-opacity-75" style="z-index: 1000; backdrop-filter: blur(2px);">
             <div class="p-5 border border-3 border-primary border-dashed rounded text-center text-primary">
-                <i class="bi bi-cloud-upload display-1"></i>
-                <h3 class="mt-3">Перетащите файлы сюда</h3>
+                <i class="bi bi-cloud-upload display-1"></i><h3 class="mt-3">Перетащите файлы сюда</h3>
             </div>
         </div>
-
         <div id="selectChatPlaceholder" class="d-flex flex-column align-items-center justify-content-center h-100 text-muted">
             <i class="bi bi-chat-heart display-1 mb-3 text-secondary opacity-50"></i>
             <h4>Выберите чат, чтобы начать общение</h4>
         </div>
-
         <div id="chatContent" class="d-flex flex-column h-100 d-none">
+            <!-- ШАПКА ЧАТА -->
             <div id="chatHeaderClickable" class="px-3 border-bottom d-flex align-items-center shadow-sm flex-shrink-0 cursor-pointer bg-white" 
                  style="height: 60px; z-index: 10;">
                 <div class="d-flex align-items-center gap-3 w-100">
                     <img id="chatAvatarHeader" src="" class="rounded-circle" width="40" height="40" style="object-fit: cover;">
                     <div class="flex-grow-1">
-                        <div class="fw-bold lh-1 text-primary text-decoration-underline-hover" id="chatTitle">...</div>
+                        <div class="fw-bold lh-1 text-dark text-decoration-none" id="chatTitle">...</div>
                         <small id="chatHeaderStatus" class="text-muted" style="font-size: 0.75rem;">Загрузка...</small>
                     </div>
                 </div>
             </div>
-
             <div id="messagesContainer" class="flex-grow-1 overflow-auto p-4 custom-scroll" style="min-height: 0; background-color: #f0f2f5;">
                 <div id="messagesList" class="d-flex flex-column gap-2"></div>
             </div>
 
-            <div id="inputArea" class="p-3 bg-white flex-shrink-0 position-relative">
-                <div id="attachmentsPreview" class="d-flex gap-2 overflow-auto pb-2 d-none"></div>
-                <form id="sendForm" class="d-flex gap-2 align-items-end bg-light rounded-3 p-2 border">
-                    <label class="btn btn-light text-secondary rounded-circle d-flex align-items-center justify-content-center p-0 mb-1" 
-                           style="width: 32px; height: 32px; cursor: pointer;">
+            <div id="inputArea" class="bg-white flex-shrink-0 position-relative border-top d-flex align-items-center"
+                 style="min-height: 60px; padding: 0 10px;">
+
+                <div id="attachmentsPreview" class="d-flex gap-2 overflow-auto pb-2 d-none w-100 position-absolute bottom-100 bg-white border-top px-3 pt-2"></div>
+
+                <form id="sendForm" class="d-flex gap-2 align-items-end w-100">
+                    <label class="btn btn-light text-secondary rounded-circle d-flex align-items-center justify-content-center p-0"
+                           style="width: 40px; height: 40px; cursor: pointer; border: 1px solid #dee2e6;">
                         <i class="bi bi-paperclip fs-5"></i>
                         <input type="file" id="fileInput" multiple hidden>
                     </label>
-                    <textarea id="messageInput" class="form-control border-0 bg-transparent shadow-none" 
-                              rows="1" placeholder="Напишите сообщение..." style="resize: none; max-height: 100px;"></textarea>
-                    <button type="submit" class="btn btn-primary rounded-circle d-flex align-items-center justify-content-center flex-shrink-0 p-0" 
+
+                    <textarea id="messageInput" class="form-control shadow-none"
+                              rows="1" placeholder="Напишите сообщение..."
+                              style="resize: none; max-height: 100px; height: 40px; padding-top: 8px;"></textarea>
+
+                    <button type="submit" class="btn btn-primary rounded-circle d-flex align-items-center justify-content-center flex-shrink-0 p-0"
                             style="width: 40px; height: 40px;">
                         <i class="bi bi-send-fill" style="margin-left: -2px; margin-top: 2px;"></i>
                     </button>
@@ -80,6 +86,9 @@
     </div>
 </div>
 
+<!-- МОДАЛЬНЫЕ ОКНА -->
+
+<!-- 1. МОЙ ПРОФИЛЬ -->
 <div class="modal fade" id="myProfileModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
@@ -89,17 +98,20 @@
             </div>
             <div class="modal-body">
                 <ul class="nav nav-tabs nav-fill mb-3" id="profileTabs" role="tablist">
-                    <li class="nav-item">
-                        <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-general">Общее</button>
-                    </li>
-                    <li class="nav-item">
-                        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-security">Безопасность</button>
-                    </li>
+                    <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-general">Общее</button></li>
+                    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-security">Безопасность</button></li>
                 </ul>
-
                 <div class="tab-content">
                     <div class="tab-pane fade show active text-center" id="tab-general">
-                        <div id="myProfilePreview" class="mb-3"></div>
+                        <div class="position-relative d-inline-block mb-3">
+                            <img id="myProfileAvatarPreview" src="" class="rounded-circle" width="100" height="100" style="object-fit:cover;">
+                            <label class="position-absolute bottom-0 end-0 bg-primary text-white rounded-circle p-1 cursor-pointer shadow-sm" 
+                                   style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;"
+                                   title="Сменить аватар">
+                                <i class="bi bi-camera-fill small"></i>
+                                <input type="file" id="uploadUserAvatarInput" hidden accept="image/*">
+                            </label>
+                        </div>
                         
                         <form id="updateDisplayNameForm" class="text-start">
                             <div class="mb-3">
@@ -111,77 +123,52 @@
                             </div>
                         </form>
                     </div>
-
                     <div class="tab-pane fade" id="tab-security">
                         <form id="updateUsernameForm" class="mb-3">
                             <label class="form-label small text-muted">Имя пользователя (@@login)</label>
                             <div class="input-group">
+                                <span class="input-group-text">@@</span>
                                 <input type="text" class="form-control" id="editUsername" required pattern="[a-zA-Z0-9_]+">
                                 <button class="btn btn-outline-secondary" type="submit">Изменить</button>
                             </div>
                         </form>
-
                         <form id="updateEmailForm" class="mb-3">
                             <label class="form-label small text-muted">Email</label>
-                            <div class="input-group">
-                                <input type="email" class="form-control" id="editEmail" required>
-                                <button class="btn btn-outline-secondary" type="submit">Изменить</button>
-                            </div>
-                            <div class="form-text x-small">При смене email потребуется подтверждение.</div>
+                            <div class="input-group"><input type="email" class="form-control" id="editEmail" required><button class="btn btn-outline-secondary" type="submit">Изменить</button></div>
                         </form>
-
                         <hr>
-
                         <form id="changePasswordForm">
                             <h6 class="mb-2">Смена пароля</h6>
-                            <div class="mb-2">
-                                <input type="password" class="form-control" id="currPass" placeholder="Текущий пароль" required>
-                            </div>
-                            <div class="mb-2">
-                                <input type="password" class="form-control" id="newPass" placeholder="Новый пароль" required minlength="8">
-                            </div>
+                            <div class="mb-2"><input type="password" class="form-control" id="currPass" placeholder="Текущий пароль" required></div>
+                            <div class="mb-2"><input type="password" class="form-control" id="newPass" placeholder="Новый пароль" required minlength="8"></div>
                             <button type="submit" class="btn btn-danger w-100 btn-sm">Обновить пароль</button>
                         </form>
                     </div>
                 </div>
-
                 <hr class="mt-4">
-                <button class="btn btn-outline-danger w-100" onclick="logout()">
-                    <i class="bi bi-box-arrow-right"></i> Выйти из аккаунта
-                </button>
+                <button class="btn btn-outline-danger w-100" onclick="logout()"><i class="bi bi-box-arrow-right"></i> Выйти из аккаунта</button>
             </div>
         </div>
     </div>
 </div>
 
+<!-- 2. НОВЫЙ ЧАТ -->
 <div class="modal fade" id="createChatModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Новый чат</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
+            <div class="modal-header"><h5 class="modal-title">Новый чат</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
             <div class="modal-body">
                 <ul class="nav nav-pills nav-fill mb-3">
-                    <li class="nav-item">
-                        <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-new-group">Группа</button>
-                    </li>
-                    <li class="nav-item">
-                        <button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-find-user">Найти человека</button>
-                    </li>
+                    <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-new-group">Группа</button></li>
+                    <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-find-user">Найти человека</button></li>
                 </ul>
-
                 <div class="tab-content">
                     <div class="tab-pane fade show active" id="tab-new-group">
                         <form id="createChatForm">
-                            <div class="mb-3">
-                                <label class="form-label">Название группы</label>
-                                <input type="text" class="form-control" id="newChatName" placeholder="Например: Флудилка">
-                            </div>
+                            <div class="mb-3"><label class="form-label">Название группы</label><input type="text" class="form-control" id="newChatName" placeholder="Например: Флудилка"></div>
                             <button type="submit" class="btn btn-primary w-100">Создать группу</button>
                         </form>
                     </div>
-
                     <div class="tab-pane fade" id="tab-find-user">
                         <form id="findUserForm">
                             <div class="input-group mb-3">
@@ -190,15 +177,16 @@
                                 <button class="btn btn-primary" type="submit">Найти</button>
                             </div>
                         </form>
-                        <div id="searchResult" class="d-none border rounded p-2 align-items-center justify-content-between">
-                            <div class="d-flex align-items-center gap-2">
-                                <img id="searchResAvatar" src="" class="rounded-circle" width="32" height="32">
-                                <div>
-                                    <div id="searchResName" class="fw-bold small"></div>
-                                    <div id="searchResNick" class="text-muted small" style="font-size:0.7em"></div>
+                        <!-- Результат поиска -->
+                        <div id="searchResult" class="d-none border rounded p-2 d-flex align-items-center justify-content-between">
+                            <div class="d-flex align-items-center gap-2 overflow-hidden">
+                                <img id="searchResAvatar" src="" class="rounded-circle flex-shrink-0" width="40" height="40" style="object-fit:cover;">
+                                <div class="overflow-hidden">
+                                    <div id="searchResName" class="fw-bold small text-truncate"></div>
+                                    <div id="searchResNick" class="text-muted small text-truncate"></div>
                                 </div>
                             </div>
-                            <button id="btnStartPrivate" class="btn btn-sm btn-success">Написать</button>
+                            <button id="btnStartPrivate" class="btn btn-sm btn-success flex-shrink-0 ms-2" style="white-space: nowrap;">Написать</button>
                         </div>
                         <div id="searchError" class="text-danger small text-center d-none mt-2">Пользователь не найден</div>
                     </div>
@@ -208,6 +196,7 @@
     </div>
 </div>
 
+<!-- 3. ИНФО О ЧАТЕ -->
 <div class="modal fade" id="chatInfoModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content">
@@ -216,6 +205,22 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
+                <!-- Аватар чата -->
+                <div class="text-center mb-3">
+                    <div class="position-relative d-inline-block">
+                        <img id="chatInfoAvatar" src="" class="rounded-circle shadow-sm" width="80" height="80" style="object-fit:cover;">
+                        <!-- Кнопка смены аватара чата -->
+                        <label id="btnChangeChatAvatar" class="position-absolute bottom-0 end-0 bg-white text-dark border rounded-circle p-1 cursor-pointer shadow-sm d-none" 
+                               style="width: 28px; height: 28px; display: flex; align-items: center; justify-content: center;"
+                               title="Сменить аватар чата">
+                            <i class="bi bi-pencil-fill" style="font-size: 0.7rem;"></i>
+                            <input type="file" id="uploadChatAvatarInput" hidden accept="image/*">
+                        </label>
+                    </div>
+                    <h5 id="chatInfoName" class="mt-2 mb-0"></h5>
+                    <div id="chatInfoCount" class="text-muted small"></div>
+                </div>
+
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <h6 class="text-muted m-0">Участники</h6>
                     <button id="btnAddMember" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#addParticipantModal">
@@ -225,77 +230,34 @@
                 <ul id="participantsList" class="list-group list-group-flush"></ul>
             </div>
             <div class="modal-footer border-0 justify-content-start">
-                <button id="btnDeleteChat" class="btn btn-outline-danger btn-sm d-none" onclick="deleteChat()">
-                    <i class="bi bi-trash"></i> Удалить чат
-                </button>
+                <button id="btnDeleteChat" class="btn btn-outline-danger btn-sm d-none" onclick="deleteChat()"><i class="bi bi-trash"></i> Удалить чат</button>
             </div>
         </div>
     </div>
 </div>
 
-<div class="modal fade" id="addParticipantModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered modal-sm">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title fs-6">Добавить</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <form id="addParticipantForm">
-                    <div class="mb-3">
-                        <label class="form-label small">UserName</label>
-                        <input type="text" class="form-control" id="addUserName" required>
-                    </div>
-                    <button type="submit" class="btn btn-primary w-100 btn-sm">OK</button>
-                </form>
-            </div>
-        </div>
-    </div>
-</div>
-
-<div class="modal fade" id="profileModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered modal-sm">
-        <div class="modal-content">
-            <div class="modal-body text-center p-4">
-                <div id="profileContent"></div>
-            </div>
-        </div>
-    </div>
-</div>
+<div class="modal fade" id="addParticipantModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered modal-sm"><div class="modal-content"><div class="modal-header"><h5 class="modal-title fs-6">Добавить</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><form id="addParticipantForm"><div class="mb-3"><label class="form-label small">UserName</label><input type="text" class="form-control" id="addUserName" required></div><button type="submit" class="btn btn-primary w-100 btn-sm">OK</button></form></div></div></div></div>
+<div class="modal fade" id="profileModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered modal-sm"><div class="modal-content"><div class="modal-body text-center p-4"><div id="profileContent"></div></div></div></div></div>
 
 <style>
     .custom-scroll::-webkit-scrollbar { width: 6px; }
     .custom-scroll::-webkit-scrollbar-track { background: transparent; }
     .custom-scroll::-webkit-scrollbar-thumb { background-color: rgba(0,0,0,0.1); border-radius: 3px; }
-
     .chat-item { cursor: pointer; transition: 0.2s; border: none; border-bottom: 1px solid #f0f0f0; }
     .chat-item:hover { background-color: #f8f9fa; }
     .chat-item.active { background-color: #0d6efd; border-left: 3px solid #0a58ca; }
     .chat-item.active .chat-name { color: white !important; font-weight: bold; }
     .chat-item.active .text-muted { color: rgba(255,255,255,0.7) !important; }
-
     .hover-darken:hover { background-color: rgba(0,0,0,0.1) !important; }
-
-    .message-bubble { 
-        padding: 10px 16px; 
-        border-radius: 16px; 
-        position: relative; 
-        word-wrap: break-word; 
-        box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-        max-width: calc(66vw * 0.85); 
-    }
+    .message-bubble { padding: 10px 16px; border-radius: 16px; position: relative; word-wrap: break-word; box-shadow: 0 1px 2px rgba(0,0,0,0.05); max-width: calc(66vw * 0.85); }
     @@media (min-width: 768px) { .message-bubble { max-width: 45vw; } }
-
     .message-mine { align-self: flex-end; background-color: #0084ff; color: white; border-bottom-right-radius: 4px; }
     .message-other { align-self: flex-start; background-color: white; color: #050505; border-bottom-left-radius: 4px; }
-
     .profile-link { cursor: pointer; }
-    .text-decoration-underline-hover:hover { text-decoration: underline; }
     .cursor-pointer { cursor: pointer; }
-    .x-small { font-size: 0.75rem; }
 </style>
 
 @section Scripts {
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/7.0.0/signalr.min.js"></script>
+    <script src="~/lib/microsoft-signalr/signalr.min.js"></script>
     <script src="~/js/chat.js" asp-append-version="true"></script>
 }

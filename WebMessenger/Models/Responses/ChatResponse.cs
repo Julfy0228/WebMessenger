@@ -6,6 +6,7 @@ namespace WebMessenger.Models.Responses
     {
         public int Id { get; set; }
         public string? Name { get; set; }
+        public string? AvatarUrl { get; set; }
         public ChatType Type { get; set; }
         public DateTime CreatedAt { get; set; }
         public List<ParticipantResponse> Participants { get; set; } = [];

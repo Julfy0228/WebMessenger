@@ -18,6 +18,9 @@ namespace WebMessenger.Entities
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
+        [MaxLength(2048)]
+        public string? AvatarUrl { get; set; }
+
         [JsonIgnore]
         public ICollection<Participant> Participants { get; set; } = [];
 

@@ -146,6 +146,7 @@ namespace WebMessenger.Controllers
                 {
                     Id = c.Id,
                     Name = c.Name,
+                    AvatarUrl = c.AvatarUrl,
                     Type = c.Type,
                     CreatedAt = c.CreatedAt,
                     Participants = c.Participants.Select(p => new ParticipantResponse
@@ -420,12 +421,48 @@ namespace WebMessenger.Controllers
             return Ok();
         }
 
-        private static ChatResponse MapToResponse(Chat chat)
+        [HttpPost("{chatId}/avatar")]
+        public async Task<IActionResult> UploadChatAvatar(int chatId, IFormFile file, [FromServices] IWebHostEnvironment env)
+        {
+            var currentUser = await userManager.GetUserAsync(User);
+            var chat = await db.Chats.Include(c => c.Participants).FirstOrDefaultAsync(c => c.Id == chatId);
+
+            if (chat == null) return NotFound(new { message = "Чат не найден" });
+
+            var participant = chat.Participants.FirstOrDefault(p => p.UserId == currentUser.Id);
+
+            if (participant == null || (participant.Role != UserRole.Owner && participant.Role != UserRole.Admin))
+                return StatusCode(403, new { message = "Нет прав на смену аватара чата" });
+
+            if (file == null || file.Length == 0) return BadRequest("Файл не выбран");
+
+            var uploadPath = Path.Combine(env.WebRootPath, "uploads", "avatars");
+            if (!Directory.Exists(uploadPath)) Directory.CreateDirectory(uploadPath);
+
+            var ext = Path.GetExtension(file.FileName);
+            var fileName = $"chat_{chat.Id}_{Guid.NewGuid()}{ext}";
+            var filePath = Path.Combine(uploadPath, fileName);
+
+            using (var stream = new FileStream(filePath, FileMode.Create))
+                await file.CopyToAsync(stream);
+
+            var relativeUrl = $"/uploads/avatars/{fileName}";
+            chat.AvatarUrl = relativeUrl;
+
+            await db.SaveChangesAsync();
+
+            await hubContext.Clients.Group(chatId.ToString()).SendAsync("ChatAvatarUpdated", chatId, relativeUrl);
+
+            return Ok(new { avatarUrl = relativeUrl });
+        }
+
+        private ChatResponse MapToResponse(Chat chat)
         {
             return new ChatResponse
             {
                 Id = chat.Id,
                 Name = chat.Name,
+                AvatarUrl = chat.AvatarUrl,
                 Type = chat.Type,
                 CreatedAt = chat.CreatedAt,
                 Participants = [.. chat.Participants.Select(p => new ParticipantResponse
