@@ -12,7 +12,7 @@ namespace WebMessenger.Entities
         public int ChatId { get; set; }
 
         [Required]
-        public int SenderId { get; set; }
+        public int? SenderId { get; set; }
 
         [MaxLength(5000)]
         public string? Text { get; set; }

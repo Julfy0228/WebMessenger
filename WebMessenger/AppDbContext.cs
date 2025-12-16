@@ -47,7 +47,7 @@ namespace WebMessenger
                 .HasOne(m => m.Sender)
                 .WithMany(u => u.Messages)
                 .HasForeignKey(m => m.SenderId)
-                .OnDelete(DeleteBehavior.Restrict);
+                .OnDelete(DeleteBehavior.SetNull);
 
             modelBuilder.Entity<Message>()
                 .HasMany(m => m.Attachments)

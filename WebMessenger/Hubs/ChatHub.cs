@@ -38,7 +38,8 @@ namespace WebMessenger.Hubs
 
         public async Task JoinChat(int chatId)
         {
-            var userId = int.Parse(Context.UserIdentifier!);
+            if (!int.TryParse(Context.UserIdentifier, out var userId))
+                return;
             var isMember = db.Participants.Any(p => p.ChatId == chatId && p.UserId == userId);
 
             if (isMember)

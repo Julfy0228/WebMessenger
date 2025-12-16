@@ -51,6 +51,17 @@ const els = {
     fileInput: document.getElementById("fileInput")
 };
 
+function escapeHtml(text) {
+    if (!text) return "";
+    return text
+        .toString()
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
 function getAvatar(url, name) {
     if (url && url.length > 5) return url;
     const encodedName = encodeURIComponent(name || "U");
@@ -77,14 +88,35 @@ connection.on("MessageDeleted", (messageId) => {
 });
 
 connection.on("ChatCreated", () => loadChats());
-connection.on("ParticipantAdded", (chatId) => { if (currentChatId === chatId) openChatInfo(chatId); loadChats(); });
-connection.on("OwnershipTransferred", (chatId) => { if (currentChatId === chatId) openChatInfo(chatId); });
-connection.on("RoleUpdated", (chatId) => { if (currentChatId === chatId) openChatInfo(chatId); });
-connection.on("ChatDeleted", (chatId) => { if (currentChatId === chatId) location.reload(); else loadChats(); });
-connection.on("UserKicked", (chatId, userId) => {
-    if (userId === myUserId) { if (currentChatId === chatId) location.reload(); else loadChats(); }
-    else { if (currentChatId === chatId) openChatInfo(chatId); loadChats(); }
+
+connection.on("ParticipantAdded", (chatId) => {
+    if (currentChatId === chatId) openChatInfo(chatId);
+    loadChats();
 });
+
+connection.on("OwnershipTransferred", (chatId) => {
+    if (currentChatId === chatId) openChatInfo(chatId);
+});
+
+connection.on("RoleUpdated", (chatId) => {
+    if (currentChatId === chatId) openChatInfo(chatId);
+});
+
+connection.on("ChatDeleted", (chatId) => {
+    if (currentChatId === chatId) location.reload();
+    else loadChats();
+});
+
+connection.on("UserKicked", (chatId, userId) => {
+    if (userId === myUserId) {
+        if (currentChatId === chatId) location.reload();
+        else loadChats();
+    } else {
+        if (currentChatId === chatId) openChatInfo(chatId);
+        loadChats();
+    }
+});
+
 connection.on("ChatAvatarUpdated", (chatId, url) => {
     if (currentChatId === chatId) els.chatAvatarHeader.src = url;
     loadChats();
@@ -94,37 +126,69 @@ connection.on("ChatAvatarUpdated", (chatId, url) => {
 function sendMessage() {
     const text = els.messageInput.value.trim();
     const validAttachments = pendingAttachments.filter(a => a);
+
     if ((!text && validAttachments.length === 0) || !currentChatId) return;
-    els.messageInput.value = ""; pendingAttachments = []; els.attachmentsPreview.innerHTML = ""; els.attachmentsPreview.classList.add("d-none");
+
+    els.messageInput.value = "";
+    pendingAttachments = [];
+    els.attachmentsPreview.innerHTML = "";
+    els.attachmentsPreview.classList.add("d-none");
+
     fetch(`/api/chat/${currentChatId}/messages`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text: text, attachments: validAttachments })
-    }).catch(err => { alert("Ошибка отправки"); els.messageInput.value = text; });
+    }).catch(err => {
+        alert("Ошибка отправки");
+        els.messageInput.value = text;
+    });
 }
 
 els.sendForm.addEventListener("submit", (e) => { e.preventDefault(); sendMessage(); });
-els.messageInput.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } });
+els.messageInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+    }
+});
 
 els.createChatForm.addEventListener("submit", async e => {
     e.preventDefault();
     const name = document.getElementById("newChatName").value.trim() || "Новый чат";
-    const res = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, type: 0, participantIds: [] }) });
-    if (res.ok) { bootstrap.Modal.getInstance(document.getElementById("createChatModal")).hide(); loadChats(); document.getElementById("newChatName").value = ""; }
+    const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, type: 0, participantIds: [] })
+    });
+    if (res.ok) {
+        bootstrap.Modal.getInstance(document.getElementById("createChatModal")).hide();
+        loadChats();
+        document.getElementById("newChatName").value = "";
+    }
 });
 
 els.findUserForm.addEventListener("submit", async e => {
     e.preventDefault();
     const username = document.getElementById("searchUserNick").value;
-    els.searchResult.classList.add("d-none"); els.searchError.classList.add("d-none");
+    els.searchResult.classList.add("d-none");
+    els.searchError.classList.add("d-none");
     try {
         const res = await fetch(`/api/user?username=${username}`);
         if (res.ok) {
             const user = await res.json();
+            const safeName = escapeHtml(user.displayName || user.userName);
+            const safeNick = escapeHtml(user.userName);
+
             document.getElementById("searchResAvatar").src = getAvatar(user.avatarUrl, user.displayName || user.userName);
-            document.getElementById("searchResName").textContent = user.displayName || user.userName;
-            document.getElementById("searchResNick").textContent = "@" + user.userName;
-            els.searchResult.classList.remove("d-none"); els.searchResult.classList.add("d-flex");
-            document.getElementById("btnStartPrivate").onclick = () => { createPrivateChat(user.id); bootstrap.Modal.getInstance(document.getElementById("createChatModal")).hide(); };
+            document.getElementById("searchResName").textContent = safeName;
+            document.getElementById("searchResNick").textContent = "@" + safeNick;
+
+            els.searchResult.classList.remove("d-none");
+            els.searchResult.classList.add("d-flex");
+            document.getElementById("btnStartPrivate").onclick = () => {
+                createPrivateChat(user.id);
+                bootstrap.Modal.getInstance(document.getElementById("createChatModal")).hide();
+            };
         } else els.searchError.classList.remove("d-none");
     } catch { els.searchError.classList.remove("d-none"); }
 });
@@ -136,9 +200,16 @@ els.addParticipantForm.addEventListener("submit", async e => {
         const userRes = await fetch(`/api/user?username=${username}`);
         if (!userRes.ok) throw new Error("Пользователь не найден");
         const user = await userRes.json();
-        const res = await fetch(`/api/chat/${currentChatId}/participants`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chatId: currentChatId, userId: user.id, role: 0 }) });
-        if (res.ok) { bootstrap.Modal.getInstance(document.getElementById("addParticipantModal")).hide(); new bootstrap.Modal(document.getElementById('chatInfoModal')).show(); document.getElementById("addUserName").value = ""; }
-        else alert("Ошибка добавления");
+        const res = await fetch(`/api/chat/${currentChatId}/participants`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ chatId: currentChatId, userId: user.id, role: 0 })
+        });
+        if (res.ok) {
+            bootstrap.Modal.getInstance(document.getElementById("addParticipantModal")).hide();
+            new bootstrap.Modal(document.getElementById('chatInfoModal')).show();
+            document.getElementById("addUserName").value = "";
+        } else alert("Ошибка добавления");
     } catch (ex) { alert(ex.message); }
 });
 
@@ -156,9 +227,15 @@ els.chatHeaderClickable.addEventListener("click", () => {
 els.currentUserBlock.addEventListener("click", () => new bootstrap.Modal(document.getElementById('myProfileModal')).show());
 
 async function handleUpdate(url, body) {
-    const res = await fetch(url, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-    if (res.ok) { alert("Успешно!"); location.reload(); } else alert("Ошибка");
+    const res = await fetch(url, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+    });
+    if (res.ok) { alert("Успешно!"); location.reload(); }
+    else alert("Ошибка");
 }
+
 els.updateDisplayNameForm.addEventListener("submit", e => { e.preventDefault(); handleUpdate("/api/user/update-displayname", document.getElementById("editDisplayName").value); });
 els.updateUsernameForm.addEventListener("submit", e => { e.preventDefault(); handleUpdate("/api/user/update-username", document.getElementById("editUsername").value); });
 els.updateEmailForm.addEventListener("submit", e => { e.preventDefault(); handleUpdate("/api/user/update-email", document.getElementById("editEmail").value); });
@@ -169,24 +246,38 @@ els.uploadUserAvatarInput.addEventListener("change", async e => {
     const formData = new FormData(); formData.append("file", e.target.files[0]);
     try {
         const res = await fetch("/api/user/avatar", { method: "POST", body: formData });
-        if (res.ok) { const data = await res.json(); els.myProfileAvatarPreview.src = data.avatarUrl; els.currentUserBlock.querySelector('img').src = data.avatarUrl; }
-        else alert("Ошибка загрузки");
+        if (res.ok) {
+            const data = await res.json();
+            els.myProfileAvatarPreview.src = data.avatarUrl;
+            els.currentUserBlock.querySelector('img').src = data.avatarUrl;
+        } else alert("Ошибка загрузки");
     } catch (err) { alert(err); }
 });
+
 els.uploadChatAvatarInput.addEventListener("change", async e => {
     if (e.target.files.length === 0) return;
     const formData = new FormData(); formData.append("file", e.target.files[0]);
     try {
         const res = await fetch(`/api/chat/${currentChatId}/avatar`, { method: "POST", body: formData });
-        if (res.ok) { const data = await res.json(); els.chatInfoAvatar.src = data.avatarUrl; }
-        else { const err = await res.json(); alert(err.message || "Ошибка"); }
+        if (res.ok) {
+            const data = await res.json();
+            els.chatInfoAvatar.src = data.avatarUrl;
+        } else {
+            const err = await res.json();
+            alert(err.message || "Ошибка");
+        }
     } catch (err) { alert(err); }
 });
 
 els.dropZone.addEventListener("dragenter", e => { e.preventDefault(); if (currentChatId) els.dragOverlay.classList.remove("d-none"); els.dragOverlay.classList.add("d-flex"); });
 els.dragOverlay.addEventListener("dragleave", e => { e.preventDefault(); els.dragOverlay.classList.add("d-none"); els.dragOverlay.classList.remove("d-flex"); });
 els.dragOverlay.addEventListener("dragover", e => e.preventDefault());
-els.dragOverlay.addEventListener("drop", e => { e.preventDefault(); els.dragOverlay.classList.add("d-none"); els.dragOverlay.classList.remove("d-flex"); if (e.dataTransfer.files.length > 0) handleFiles(e.dataTransfer.files); });
+els.dragOverlay.addEventListener("drop", e => {
+    e.preventDefault();
+    els.dragOverlay.classList.add("d-none");
+    els.dragOverlay.classList.remove("d-flex");
+    if (e.dataTransfer.files.length > 0) handleFiles(e.dataTransfer.files);
+});
 els.fileInput.addEventListener("change", e => { if (e.target.files.length > 0) handleFiles(e.target.files); });
 
 function handleFiles(files) {
@@ -194,25 +285,57 @@ function handleFiles(files) {
     Array.from(files).forEach(file => {
         const reader = new FileReader();
         reader.onload = (e) => {
-            let type = 0; if (file.type.startsWith("image/")) type = 1; else if (file.type.startsWith("audio/")) type = 2; else if (file.type.startsWith("video/")) type = 3;
+            let type = 0;
+            if (file.type.startsWith("image/")) type = 1;
+            else if (file.type.startsWith("audio/")) type = 2;
+            else if (file.type.startsWith("video/")) type = 3;
+
             const att = { type, url: e.target.result, name: file.name, size: file.size };
-            pendingAttachments.push(att); renderAttachmentPreview(att, pendingAttachments.length - 1);
+            pendingAttachments.push(att);
+            renderAttachmentPreview(att, pendingAttachments.length - 1);
         }; reader.readAsDataURL(file);
     });
 }
+
 function renderAttachmentPreview(att, i) {
-    const div = document.createElement("div"); div.className = "position-relative border rounded overflow-hidden flex-shrink-0"; div.style.width = "60px"; div.style.height = "60px";
-    let c = `<i class="bi bi-file-earmark fs-2 text-secondary d-block text-center mt-2"></i>`; if (att.type === 1) c = `<img src="${att.url}" class="w-100 h-100" style="object-fit:cover;">`;
+    const div = document.createElement("div");
+    div.className = "position-relative border rounded overflow-hidden flex-shrink-0";
+    div.style.width = "60px"; div.style.height = "60px";
+
+    let c = `<i class="bi bi-file-earmark fs-2 text-secondary d-block text-center mt-2"></i>`;
+    if (att.type === 1) c = `<img src="${att.url}" class="w-100 h-100" style="object-fit:cover;">`;
+
     div.innerHTML = `${c}<button type="button" class="btn-close position-absolute top-0 end-0 bg-white p-1" style="width:8px;height:8px;" onclick="removeAttachment(${i},this)"></button>`;
     els.attachmentsPreview.appendChild(div);
 }
-window.removeAttachment = function (i, btn) { btn.parentElement.remove(); delete pendingAttachments[i]; if (els.attachmentsPreview.children.length === 0) { els.attachmentsPreview.classList.add("d-none"); pendingAttachments = []; } };
+
+window.removeAttachment = function (i, btn) {
+    btn.parentElement.remove();
+    delete pendingAttachments[i];
+    if (els.attachmentsPreview.children.length === 0) {
+        els.attachmentsPreview.classList.add("d-none");
+        pendingAttachments = [];
+    }
+};
 
 function renderMyProfile(u) {
     const avatar = getAvatar(u.avatarUrl, u.displayName || u.userName);
-    els.currentUserBlock.innerHTML = `<img src="${avatar}" class="rounded-circle" width="38" height="38"><div class="overflow-hidden"><div class="fw-bold text-truncate" style="font-size:0.9rem;">${u.displayName || u.userName}</div><div class="small text-muted text-truncate" style="font-size:0.75rem;">@${u.userName}</div></div><div class="ms-auto text-secondary"><i class="bi bi-gear-fill"></i></div>`;
+    const safeName = escapeHtml(u.displayName || u.userName);
+    const safeUser = escapeHtml(u.userName);
+    const safeEmail = escapeHtml(u.email);
+
+    els.currentUserBlock.innerHTML = `
+        <img src="${avatar}" class="rounded-circle" width="38" height="38">
+        <div class="overflow-hidden">
+            <div class="fw-bold text-truncate" style="font-size:0.9rem;">${safeName}</div>
+            <div class="small text-muted text-truncate" style="font-size:0.75rem;">@${safeUser}</div>
+        </div>
+        <div class="ms-auto text-secondary"><i class="bi bi-gear-fill"></i></div>`;
+
     els.myProfileAvatarPreview.src = avatar;
-    document.getElementById("editDisplayName").value = u.displayName || ""; document.getElementById("editUsername").value = u.userName || ""; document.getElementById("editEmail").value = u.email || "";
+    document.getElementById("editDisplayName").value = u.displayName || "";
+    document.getElementById("editUsername").value = u.userName || "";
+    document.getElementById("editEmail").value = u.email || "";
 }
 
 function loadChats() {
@@ -229,13 +352,33 @@ function loadChats() {
             const count = chat.participants ? chat.participants.length : 1;
             if (chat.type === 1) {
                 const other = chat.participants.find(p => p.userId !== myUserId);
-                if (other) { displayName = other.displayName || other.userName; displayAvatar = getAvatar(other.avatarUrl, displayName); }
+                if (other) {
+                    displayName = other.displayName || other.userName;
+                    displayAvatar = getAvatar(other.avatarUrl, displayName);
+                }
             }
-            const div = document.createElement("div"); div.className = `list-group-item chat-item py-3 ${isActive}`; div.id = `chat-item-${chat.id}`;
+
+            const safeName = escapeHtml(displayName);
+            const lastMsg = chat.lastMessage ? escapeHtml(chat.lastMessage.text) : 'Нет сообщений';
+            const time = chat.lastMessage ? new Date(chat.lastMessage.sentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+
+            const div = document.createElement("div");
+            div.className = `list-group-item chat-item py-3 ${isActive}`;
+            div.id = `chat-item-${chat.id}`;
 
             div.onclick = () => selectChat(chat, div, displayName, displayAvatar, count, myRoleInThisChat);
 
-            div.innerHTML = `<div class="d-flex align-items-center gap-3"><img src="${displayAvatar}" class="rounded-circle bg-white" width="48" height="48" style="object-fit:cover;"><div class="flex-grow-1 overflow-hidden"><div class="d-flex justify-content-between align-items-center"><span class="chat-name fw-bold text-truncate">${displayName}</span><small class="text-muted" style="font-size:0.75em">${chat.lastMessage ? new Date(chat.lastMessage.sentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</small></div><small class="text-muted text-truncate d-block" id="last-msg-${chat.id}">${chat.lastMessage ? chat.lastMessage.text : 'Нет сообщений'}</small></div></div>`;
+            div.innerHTML = `
+                <div class="d-flex align-items-center gap-3">
+                    <img src="${displayAvatar}" class="rounded-circle bg-white" width="48" height="48" style="object-fit:cover;">
+                    <div class="flex-grow-1 overflow-hidden">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span class="chat-name fw-bold text-truncate">${safeName}</span>
+                            <small class="text-muted" style="font-size:0.75em">${time}</small>
+                        </div>
+                        <small class="text-muted text-truncate d-block" id="last-msg-${chat.id}">${lastMsg}</small>
+                    </div>
+                </div>`;
             els.chatsList.appendChild(div);
         });
     });
@@ -254,14 +397,25 @@ function selectChat(chat, element, nameOverride, avatarOverride, count, role) {
 
     els.chatTitle.textContent = nameOverride || chat.name;
     els.chatAvatarHeader.src = avatarOverride || getAvatar(null, chat.name);
-    if (chat.type === 1) { const other = chat.participants.find(p => p.userId !== myUserId); if (other) els.chatAvatarHeader.dataset.partnerId = other.userId; }
+    if (chat.type === 1) {
+        const other = chat.participants.find(p => p.userId !== myUserId);
+        if (other) els.chatAvatarHeader.dataset.partnerId = other.userId;
+    }
 
     els.chatHeaderStatus.textContent = (chat.type === 1) ? "" : `${count} участников`;
-    els.messagesList.innerHTML = ""; lastSenderId = null; els.messageInput.value = ""; els.messageInput.focus();
-    pendingAttachments = []; els.attachmentsPreview.innerHTML = ""; els.attachmentsPreview.classList.add("d-none");
+    els.messagesList.innerHTML = "";
+    lastSenderId = null;
+    els.messageInput.value = "";
+    els.messageInput.focus();
+    pendingAttachments = [];
+    els.attachmentsPreview.innerHTML = "";
+    els.attachmentsPreview.classList.add("d-none");
 
     connection.invoke("JoinChat", chat.id);
-    fetch(`/api/chat/${chat.id}/messages`).then(r => r.json()).then(messages => { messages.forEach(renderMessage); scrollToBottom(); });
+    fetch(`/api/chat/${chat.id}/messages`).then(r => r.json()).then(messages => {
+        messages.forEach(renderMessage);
+        scrollToBottom();
+    });
 }
 
 function renderMessage(m) {
@@ -291,24 +445,26 @@ function renderMessage(m) {
     if (m.attachments && m.attachments.length > 0) {
         attHtml = `<div class="d-flex flex-wrap gap-2 mb-2">`;
         m.attachments.forEach(a => {
+            const safeFileName = escapeHtml(a.name);
             if (a.type === 1) attHtml += `<a href="${a.url}" target="_blank"><img src="${a.url}" class="rounded border" style="max-width:200px;max-height:200px;object-fit:cover;"></a>`;
-            else attHtml += `<a href="${a.url}" download="${a.name}" target="_blank" class="btn btn-sm btn-light border d-flex align-items-center gap-2 text-decoration-none text-dark" style="max-width:200px;"><i class="bi bi-file-earmark-arrow-down-fill text-primary fs-5"></i><div class="text-truncate" style="max-width: 140px;">${a.name}</div></a>`;
-        }); attHtml += `</div>`;
+            else attHtml += `<a href="${a.url}" download="${safeFileName}" target="_blank" class="btn btn-sm btn-light border d-flex align-items-center gap-2 text-decoration-none text-dark" style="max-width:200px;"><i class="bi bi-file-earmark-arrow-down-fill text-primary fs-5"></i><div class="text-truncate" style="max-width: 140px;">${safeFileName}</div></a>`;
+        });
+        attHtml += `</div>`;
     }
 
-    const nameHtml = (!isMine && !sameSender) ? `<div class="small text-muted ms-1 mb-1 profile-link" data-id="${m.senderId}">${m.senderName}</div>` : "";
-
+    const safeSenderName = escapeHtml(m.senderName);
+    const safeText = escapeHtml(m.text || "");
+    const nameHtml = (!isMine && !sameSender) ? `<div class="small text-muted ms-1 mb-1 profile-link" data-id="${m.senderId}">${safeSenderName}</div>` : "";
     const actionsHtml = `<div class="d-flex align-items-center px-2">${deleteBtn}</div>`;
 
     wrapper.innerHTML = `
         ${isMine ? '' : `<img src="${avatarSrc}" class="rounded-circle profile-link" width="32" height="32" style="visibility:${avatarVisibility}" data-id="${m.senderId}">`}
-        
         <div style="max-width:100%; display:flex; flex-direction:column; align-items:${isMine ? 'flex-end' : 'flex-start'}">
             ${nameHtml}
             <div class="d-flex align-items-center ${isMine ? 'flex-row-reverse' : 'flex-row'}">
                 <div class="message-bubble ${isMine ? "message-mine" : "message-other"}">
                     ${attHtml}
-                    <div class="mb-1">${m.text || ""}</div>
+                    <div class="mb-1">${safeText}</div>
                     <div class="text-end opacity-75" style="font-size:0.7em;margin-bottom:-4px;">${new Date(m.sentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
                 </div>
                 ${deleteBtn ? actionsHtml : ''}
@@ -320,45 +476,69 @@ function renderMessage(m) {
 
 function updateLastMessageInList(chatId, text, time) {
     const el = document.getElementById(`last-msg-${chatId}`);
-    if (el) el.textContent = text || "Вложение";
+    if (el) el.textContent = escapeHtml(text || "Вложение");
 }
+
 function scrollToBottom() { els.messagesContainer.scrollTop = els.messagesContainer.scrollHeight; }
 
 function openChatInfo(chatId) {
     fetch(`/api/chat/${chatId}`).then(r => r.json()).then(chat => {
         els.participantsList.innerHTML = "";
+
         els.chatInfoName.textContent = chat.name;
         els.chatInfoAvatar.src = getAvatar(chat.avatarUrl, chat.name);
         els.chatInfoCount.textContent = `${chat.participants.length} участников`;
-        if (chat.type === 1) els.btnAddMember.classList.add("d-none"); else els.btnAddMember.classList.remove("d-none");
+
+        if (chat.type === 1) els.btnAddMember.classList.add("d-none");
+        else els.btnAddMember.classList.remove("d-none");
 
         const myParticipant = chat.participants.find(p => p.userId === myUserId);
+        if (myParticipant) {
+            currentChatRole = myParticipant.role;
+        }
+
         const myRole = myParticipant ? (typeof myParticipant.role === 'string' ? myParticipant.role : roleNames[myParticipant.role]) : "Member";
         const isOwner = myRole === "Owner" || myRole === "Владелец" || myParticipant?.role === 2;
         const isAdmin = myRole === "Admin" || myRole === "Админ" || myParticipant?.role === 1;
 
-        if (isOwner) els.btnDeleteChat.classList.remove("d-none"); else els.btnDeleteChat.classList.add("d-none");
-        if (chat.type === 0 && (isOwner || isAdmin)) els.btnChangeChatAvatar.classList.remove("d-none"); else els.btnChangeChatAvatar.classList.add("d-none");
+        if (isOwner) els.btnDeleteChat.classList.remove("d-none");
+        else els.btnDeleteChat.classList.add("d-none");
+
+        if (chat.type === 0 && (isOwner || isAdmin)) els.btnChangeChatAvatar.classList.remove("d-none");
+        else els.btnChangeChatAvatar.classList.add("d-none");
 
         chat.participants.forEach(p => {
             const isMe = p.userId === myUserId;
             const pRoleName = roleNames[p.role] || p.role;
             const pIsOwner = p.role === 2 || pRoleName === "Owner";
             const pIsAdmin = p.role === 1 || pRoleName === "Admin";
+
+            const safePName = escapeHtml(p.displayName || p.userName);
+            const safePUser = escapeHtml(p.userName);
+
             let buttonsHtml = "";
             if (!isMe && chat.type === 0) {
                 let canKick = isOwner || (isAdmin && !pIsOwner && !pIsAdmin);
                 let canPromote = isOwner && !pIsAdmin && !pIsOwner;
                 let canDemote = isOwner && pIsAdmin;
                 let canTransfer = isOwner;
+
                 if (canTransfer) buttonsHtml += `<button class="btn btn-sm btn-outline-warning ms-1" title="Передать владение" onclick="transferOwnership(${p.userId})"><i class="bi bi-award"></i></button>`;
                 if (canPromote) buttonsHtml += `<button class="btn btn-sm btn-outline-success ms-1" title="Сделать админом" onclick="promoteToAdmin(${p.userId})"><i class="bi bi-arrow-up-circle"></i></button>`;
                 if (canDemote) buttonsHtml += `<button class="btn btn-sm btn-outline-secondary ms-1" title="Разжаловать" onclick="demoteToMember(${p.userId})"><i class="bi bi-arrow-down-circle"></i></button>`;
                 if (canKick) buttonsHtml += `<button class="btn btn-sm btn-outline-danger ms-1" title="Исключить" onclick="kickUser(${p.userId})"><i class="bi bi-x-lg"></i></button>`;
             }
+
             const li = document.createElement("li");
             li.className = "list-group-item d-flex align-items-center gap-3 px-0 border-0";
-            li.innerHTML = `<img src="${getAvatar(null, p.displayName || p.userName)}" class="rounded-circle profile-link" width="36" height="36" data-id="${p.userId}"><div class="flex-grow-1"><div class="fw-bold profile-link" data-id="${p.userId}">${p.displayName || p.userName}</div><small class="text-muted">@${p.userName}</small></div><span class="badge bg-light text-dark border">${roleNames[p.role] || p.role}</span><div class="d-flex">${buttonsHtml}</div>`;
+            li.innerHTML = `
+                <img src="${getAvatar(null, p.displayName || p.userName)}" class="rounded-circle profile-link" width="36" height="36" data-id="${p.userId}">
+                <div class="flex-grow-1">
+                    <div class="fw-bold profile-link" data-id="${p.userId}">${safePName}</div>
+                    <small class="text-muted">@${safePUser}</small>
+                </div>
+                <span class="badge bg-light text-dark border">${roleNames[p.role] || p.role}</span>
+                <div class="d-flex">${buttonsHtml}</div>`;
             els.participantsList.appendChild(li);
         });
     });
@@ -367,7 +547,15 @@ function openChatInfo(chatId) {
 function openProfile(id) {
     fetch(`/api/user/${id}`).then(r => r.json()).then(u => {
         const btn = (u.id !== myUserId) ? `<div class="d-grid"><button onclick="createPrivateChat('${u.id}')" class="btn btn-outline-primary btn-sm">Написать</button></div>` : '';
-        els.profileContent.innerHTML = `<img src="${getAvatar(u.avatarUrl, u.displayName || u.userName)}" class="rounded-circle mb-3 shadow-sm" width="90" height="90"><h5 class="fw-bold">${u.displayName || u.userName}</h5><p class="text-muted mb-2">@${u.userName}</p><div class="badge ${u.isOnline ? 'bg-success' : 'bg-secondary'} mb-3">${u.isOnline ? 'Online' : 'Offline'}</div>${btn}`;
+        const safeName = escapeHtml(u.displayName || u.userName);
+        const safeUser = escapeHtml(u.userName);
+
+        els.profileContent.innerHTML = `
+            <img src="${getAvatar(u.avatarUrl, u.displayName || u.userName)}" class="rounded-circle mb-3 shadow-sm" width="90" height="90">
+            <h5 class="fw-bold">${safeName}</h5>
+            <p class="text-muted mb-2">@${safeUser}</p>
+            <div class="badge ${u.isOnline ? 'bg-success' : 'bg-secondary'} mb-3">${u.isOnline ? 'Online' : 'Offline'}</div>
+            ${btn}`;
         new bootstrap.Modal(document.getElementById('profileModal')).show();
     });
 }
@@ -378,10 +566,70 @@ window.deleteMessage = async function (id) {
     if (!res.ok) alert("Ошибка удаления");
 };
 
-window.createPrivateChat = async function (id) { const res = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "P", type: 1, participantIds: [parseInt(id)] }) }); if (res.ok) { const c = await res.json(); bootstrap.Modal.getOrCreateInstance(document.getElementById('profileModal')).hide(); bootstrap.Modal.getOrCreateInstance(document.getElementById('createChatModal')).hide(); await loadChats(); setTimeout(() => document.getElementById(`chat-item-${c.id}`)?.click(), 100); } else alert("Ошибка"); };
-window.transferOwnership = async function (id) { if (!confirm("Передать права?")) return; const res = await fetch(`/api/chat/${currentChatId}/transfer-ownership`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ newOwnerId: id }) }); if (res.ok) openChatInfo(currentChatId); else alert("Ошибка"); };
-window.deleteChat = async function () { if (!confirm("Удалить чат?")) return; const res = await fetch(`/api/chat/${currentChatId}`, { method: "DELETE" }); if (res.ok) { bootstrap.Modal.getInstance(document.getElementById('chatInfoModal')).hide(); location.reload(); } else alert("Ошибка"); };
-window.promoteToAdmin = async function (id) { if (!confirm("Назначить админом?")) return; const res = await fetch(`/api/chat/${currentChatId}/promote`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId: id }) }); if (res.ok) openChatInfo(currentChatId); else alert("Ошибка"); };
-window.demoteToMember = async function (id) { if (!confirm("Разжаловать?")) return; const res = await fetch(`/api/chat/${currentChatId}/demote`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId: id }) }); if (res.ok) openChatInfo(currentChatId); else alert("Ошибка"); };
-window.kickUser = async function (id) { if (!confirm("Исключить?")) return; const res = await fetch(`/api/chat/${currentChatId}/kick`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId: id }) }); if (res.ok) openChatInfo(currentChatId); else alert("Ошибка"); };
-window.logout = function () { fetch("/api/user/logout", { method: "POST" }).then(() => window.location.href = "/"); };
+window.createPrivateChat = async function (id) {
+    const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "P", type: 1, participantIds: [parseInt(id)] })
+    });
+    if (res.ok) {
+        const c = await res.json();
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('profileModal')).hide();
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('createChatModal')).hide();
+        await loadChats();
+        setTimeout(() => document.getElementById(`chat-item-${c.id}`)?.click(), 100);
+    } else alert("Ошибка");
+};
+
+window.transferOwnership = async function (id) {
+    if (!confirm("Передать права?")) return;
+    const res = await fetch(`/api/chat/${currentChatId}/transfer-ownership`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ newOwnerId: id })
+    });
+    if (res.ok) openChatInfo(currentChatId); else alert("Ошибка");
+};
+
+window.deleteChat = async function () {
+    if (!confirm("Удалить чат?")) return;
+    const res = await fetch(`/api/chat/${currentChatId}`, { method: "DELETE" });
+    if (res.ok) {
+        bootstrap.Modal.getInstance(document.getElementById('chatInfoModal')).hide();
+        location.reload();
+    } else alert("Ошибка");
+};
+
+window.promoteToAdmin = async function (id) {
+    if (!confirm("Назначить админом?")) return;
+    const res = await fetch(`/api/chat/${currentChatId}/promote`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: id })
+    });
+    if (res.ok) openChatInfo(currentChatId); else alert("Ошибка");
+};
+
+window.demoteToMember = async function (id) {
+    if (!confirm("Разжаловать?")) return;
+    const res = await fetch(`/api/chat/${currentChatId}/demote`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: id })
+    });
+    if (res.ok) openChatInfo(currentChatId); else alert("Ошибка");
+};
+
+window.kickUser = async function (id) {
+    if (!confirm("Исключить?")) return;
+    const res = await fetch(`/api/chat/${currentChatId}/kick`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: id })
+    });
+    if (res.ok) openChatInfo(currentChatId); else alert("Ошибка");
+};
+
+window.logout = function () {
+    fetch("/api/user/logout", { method: "POST" }).then(() => window.location.href = "/");
+};
