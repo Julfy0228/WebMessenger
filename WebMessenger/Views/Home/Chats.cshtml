@@ -255,6 +255,10 @@
     .message-other { align-self: flex-start; background-color: white; color: #050505; border-bottom-left-radius: 4px; }
     .profile-link { cursor: pointer; }
     .cursor-pointer { cursor: pointer; }
+    .msg-actions { opacity: 0; transition: opacity 0.2s; }
+    .msg-row:hover .msg-actions { opacity: 1; }
+    .btn-delete-msg { border: none; background: transparent; color: #dc3545; padding: 0 5px; cursor: pointer; }
+    .btn-delete-msg:hover { color: #b02a37; }
 </style>
 
 @section Scripts {

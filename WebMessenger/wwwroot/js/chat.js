@@ -1,5 +1,6 @@
 ﻿let currentChatId = null;
 let currentChatType = 0;
+let currentChatRole = 0;
 let lastSenderId = null;
 let myUserId = 0;
 let pendingAttachments = [];
@@ -22,30 +23,32 @@ const els = {
     participantsList: document.getElementById("participantsList"),
     createChatForm: document.getElementById("createChatForm"),
     addParticipantForm: document.getElementById("addParticipantForm"),
-    profileContent: document.getElementById("profileContent"),
+
     currentUserBlock: document.getElementById("currentUserBlock"),
     myProfileAvatarPreview: document.getElementById("myProfileAvatarPreview"),
     uploadUserAvatarInput: document.getElementById("uploadUserAvatarInput"),
+    profileContent: document.getElementById("profileContent"),
+
+    updateDisplayNameForm: document.getElementById("updateDisplayNameForm"),
+    updateUsernameForm: document.getElementById("updateUsernameForm"),
+    updateEmailForm: document.getElementById("updateEmailForm"),
+    changePasswordForm: document.getElementById("changePasswordForm"),
 
     chatInfoName: document.getElementById("chatInfoName"),
     chatInfoAvatar: document.getElementById("chatInfoAvatar"),
     chatInfoCount: document.getElementById("chatInfoCount"),
     btnChangeChatAvatar: document.getElementById("btnChangeChatAvatar"),
     uploadChatAvatarInput: document.getElementById("uploadChatAvatarInput"),
+    btnAddMember: document.getElementById("btnAddMember"),
+    btnDeleteChat: document.getElementById("btnDeleteChat"),
 
-    updateDisplayNameForm: document.getElementById("updateDisplayNameForm"),
-    updateUsernameForm: document.getElementById("updateUsernameForm"),
-    updateEmailForm: document.getElementById("updateEmailForm"),
-    changePasswordForm: document.getElementById("changePasswordForm"),
     findUserForm: document.getElementById("findUserForm"),
     searchResult: document.getElementById("searchResult"),
     searchError: document.getElementById("searchError"),
     dropZone: document.getElementById("dropZone"),
     dragOverlay: document.getElementById("dragOverlay"),
     attachmentsPreview: document.getElementById("attachmentsPreview"),
-    fileInput: document.getElementById("fileInput"),
-    btnAddMember: document.getElementById("btnAddMember"),
-    btnDeleteChat: document.getElementById("btnDeleteChat")
+    fileInput: document.getElementById("fileInput")
 };
 
 function getAvatar(url, name) {
@@ -61,25 +64,43 @@ fetch("/api/user/me").then(r => r.json()).then(u => {
 });
 
 connection.on("ReceiveMessage", (message) => {
-    if (message.chatId === currentChatId) { renderMessage(message); scrollToBottom(); }
+    if (message.chatId === currentChatId) {
+        renderMessage(message);
+        scrollToBottom();
+    }
     updateLastMessageInList(message.chatId, message.text, message.sentAt);
 });
+
+connection.on("MessageDeleted", (messageId) => {
+    const el = document.getElementById(`msg-row-${messageId}`);
+    if (el) el.remove();
+});
+
 connection.on("ChatCreated", () => loadChats());
 connection.on("ParticipantAdded", (chatId) => { if (currentChatId === chatId) openChatInfo(chatId); loadChats(); });
 connection.on("OwnershipTransferred", (chatId) => { if (currentChatId === chatId) openChatInfo(chatId); });
 connection.on("RoleUpdated", (chatId) => { if (currentChatId === chatId) openChatInfo(chatId); });
 connection.on("ChatDeleted", (chatId) => { if (currentChatId === chatId) location.reload(); else loadChats(); });
-connection.on("UserKicked", (chatId, userId) => { if (userId === myUserId) { if (currentChatId === chatId) location.reload(); else loadChats(); } else { if (currentChatId === chatId) openChatInfo(chatId); loadChats(); } });
-
-connection.on("ChatAvatarUpdated", (chatId, url) => {
-
-    if (currentChatId === chatId) els.chatAvatarHeader.src = url;
-
-    loadChats();
-
-    const modalOpen = document.getElementById('chatInfoModal').classList.contains('show');
-    if (modalOpen && currentChatId === chatId) els.chatInfoAvatar.src = url;
+connection.on("UserKicked", (chatId, userId) => {
+    if (userId === myUserId) { if (currentChatId === chatId) location.reload(); else loadChats(); }
+    else { if (currentChatId === chatId) openChatInfo(chatId); loadChats(); }
 });
+connection.on("ChatAvatarUpdated", (chatId, url) => {
+    if (currentChatId === chatId) els.chatAvatarHeader.src = url;
+    loadChats();
+    if (document.getElementById('chatInfoModal').classList.contains('show') && currentChatId === chatId) els.chatInfoAvatar.src = url;
+});
+
+function sendMessage() {
+    const text = els.messageInput.value.trim();
+    const validAttachments = pendingAttachments.filter(a => a);
+    if ((!text && validAttachments.length === 0) || !currentChatId) return;
+    els.messageInput.value = ""; pendingAttachments = []; els.attachmentsPreview.innerHTML = ""; els.attachmentsPreview.classList.add("d-none");
+    fetch(`/api/chat/${currentChatId}/messages`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: text, attachments: validAttachments })
+    }).catch(err => { alert("Ошибка отправки"); els.messageInput.value = text; });
+}
 
 els.sendForm.addEventListener("submit", (e) => { e.preventDefault(); sendMessage(); });
 els.messageInput.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); } });
@@ -101,7 +122,7 @@ els.findUserForm.addEventListener("submit", async e => {
             const user = await res.json();
             document.getElementById("searchResAvatar").src = getAvatar(user.avatarUrl, user.displayName || user.userName);
             document.getElementById("searchResName").textContent = user.displayName || user.userName;
-            document.getElementById("searchResNick").textContent = "@" + user.userName; // @ вместо #
+            document.getElementById("searchResNick").textContent = "@" + user.userName;
             els.searchResult.classList.remove("d-none"); els.searchResult.classList.add("d-flex");
             document.getElementById("btnStartPrivate").onclick = () => { createPrivateChat(user.id); bootstrap.Modal.getInstance(document.getElementById("createChatModal")).hide(); };
         } else els.searchError.classList.remove("d-none");
@@ -145,37 +166,21 @@ els.changePasswordForm.addEventListener("submit", e => { e.preventDefault(); han
 
 els.uploadUserAvatarInput.addEventListener("change", async e => {
     if (e.target.files.length === 0) return;
-    const formData = new FormData();
-    formData.append("file", e.target.files[0]);
-
+    const formData = new FormData(); formData.append("file", e.target.files[0]);
     try {
         const res = await fetch("/api/user/avatar", { method: "POST", body: formData });
-        if (res.ok) {
-            const data = await res.json();
-
-            els.myProfileAvatarPreview.src = data.avatarUrl;
-
-            const imgBlock = els.currentUserBlock.querySelector('img');
-            if (imgBlock) imgBlock.src = data.avatarUrl;
-        } else alert("Ошибка загрузки аватара");
-    } catch (err) { alert("Ошибка: " + err); }
+        if (res.ok) { const data = await res.json(); els.myProfileAvatarPreview.src = data.avatarUrl; els.currentUserBlock.querySelector('img').src = data.avatarUrl; }
+        else alert("Ошибка загрузки");
+    } catch (err) { alert(err); }
 });
-
 els.uploadChatAvatarInput.addEventListener("change", async e => {
     if (e.target.files.length === 0) return;
-    const formData = new FormData();
-    formData.append("file", e.target.files[0]);
-
+    const formData = new FormData(); formData.append("file", e.target.files[0]);
     try {
         const res = await fetch(`/api/chat/${currentChatId}/avatar`, { method: "POST", body: formData });
-        if (res.ok) {
-            const data = await res.json();
-            els.chatInfoAvatar.src = data.avatarUrl;
-        } else {
-            const err = await res.json();
-            alert(err.message || "Ошибка загрузки");
-        }
-    } catch (err) { alert("Ошибка: " + err); }
+        if (res.ok) { const data = await res.json(); els.chatInfoAvatar.src = data.avatarUrl; }
+        else { const err = await res.json(); alert(err.message || "Ошибка"); }
+    } catch (err) { alert(err); }
 });
 
 els.dropZone.addEventListener("dragenter", e => { e.preventDefault(); if (currentChatId) els.dragOverlay.classList.remove("d-none"); els.dragOverlay.classList.add("d-flex"); });
@@ -215,70 +220,116 @@ function loadChats() {
         els.chatsList.innerHTML = "";
         chats.forEach(chat => {
             const isActive = chat.id === currentChatId ? 'active' : '';
-
             let displayName = chat.name;
-
             let displayAvatar = getAvatar(chat.avatarUrl, chat.name);
+
+            const myParticipant = chat.participants.find(p => p.userId === myUserId);
+            const myRoleInThisChat = myParticipant ? myParticipant.role : 0;
 
             const count = chat.participants ? chat.participants.length : 1;
             if (chat.type === 1) {
                 const other = chat.participants.find(p => p.userId !== myUserId);
-                if (other) {
-                    displayName = other.displayName || other.userName;
-                    displayAvatar = getAvatar(other.avatarUrl || null, displayName);
-                }
+                if (other) { displayName = other.displayName || other.userName; displayAvatar = getAvatar(other.avatarUrl, displayName); }
             }
             const div = document.createElement("div"); div.className = `list-group-item chat-item py-3 ${isActive}`; div.id = `chat-item-${chat.id}`;
-            div.onclick = () => selectChat(chat, div, displayName, displayAvatar, count);
+
+            div.onclick = () => selectChat(chat, div, displayName, displayAvatar, count, myRoleInThisChat);
+
             div.innerHTML = `<div class="d-flex align-items-center gap-3"><img src="${displayAvatar}" class="rounded-circle bg-white" width="48" height="48" style="object-fit:cover;"><div class="flex-grow-1 overflow-hidden"><div class="d-flex justify-content-between align-items-center"><span class="chat-name fw-bold text-truncate">${displayName}</span><small class="text-muted" style="font-size:0.75em">${chat.lastMessage ? new Date(chat.lastMessage.sentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</small></div><small class="text-muted text-truncate d-block" id="last-msg-${chat.id}">${chat.lastMessage ? chat.lastMessage.text : 'Нет сообщений'}</small></div></div>`;
             els.chatsList.appendChild(div);
         });
     });
 }
 
-function selectChat(chat, element, nameOverride, avatarOverride, count) {
+function selectChat(chat, element, nameOverride, avatarOverride, count, role) {
     if (currentChatId === chat.id) return;
-    currentChatId = chat.id; currentChatType = chat.type;
+    currentChatId = chat.id;
+    currentChatType = chat.type;
+    currentChatRole = role;
+
     document.querySelectorAll(".chat-item").forEach(i => i.classList.remove("active"));
     if (element) element.classList.add("active");
     els.placeholder.classList.add("d-none"); els.placeholder.classList.remove("d-flex");
     els.chatContent.classList.remove("d-none"); els.chatContent.classList.add("d-flex");
+
     els.chatTitle.textContent = nameOverride || chat.name;
     els.chatAvatarHeader.src = avatarOverride || getAvatar(null, chat.name);
     if (chat.type === 1) { const other = chat.participants.find(p => p.userId !== myUserId); if (other) els.chatAvatarHeader.dataset.partnerId = other.userId; }
+
     els.chatHeaderStatus.textContent = (chat.type === 1) ? "" : `${count} участников`;
     els.messagesList.innerHTML = ""; lastSenderId = null; els.messageInput.value = ""; els.messageInput.focus();
     pendingAttachments = []; els.attachmentsPreview.innerHTML = ""; els.attachmentsPreview.classList.add("d-none");
+
     connection.invoke("JoinChat", chat.id);
     fetch(`/api/chat/${chat.id}/messages`).then(r => r.json()).then(messages => { messages.forEach(renderMessage); scrollToBottom(); });
 }
 
 function renderMessage(m) {
-    const isMine = m.senderId === myUserId; const sameSender = lastSenderId === m.senderId; lastSenderId = m.senderId;
-    const wrapper = document.createElement("div"); wrapper.className = `d-flex gap-2 ${isMine ? "flex-row-reverse" : "flex-row"} ${sameSender ? "mt-1" : "mt-3"}`;
+    const isMine = m.senderId === myUserId;
+    const sameSender = lastSenderId === m.senderId;
+    lastSenderId = m.senderId;
+
+    const isAdmin = currentChatRole === 1 || currentChatRole === "Admin" || currentChatRole === "Админ";
+    const isOwner = currentChatRole === 2 || currentChatRole === "Owner" || currentChatRole === "Владелец";
+
+    let deleteBtn = "";
+    if (isMine || isOwner || isAdmin) {
+        deleteBtn = `
+            <button class="btn-delete-msg msg-actions" onclick="deleteMessage(${m.id})" title="Удалить">
+                <i class="bi bi-trash"></i>
+            </button>`;
+    }
+
+    const wrapper = document.createElement("div");
+    wrapper.className = `msg-row d-flex gap-2 ${isMine ? "flex-row-reverse" : "flex-row"} ${sameSender ? "mt-1" : "mt-3"}`;
+    wrapper.id = `msg-row-${m.id}`;
+
     const avatarVisibility = (!isMine && !sameSender) ? "visible" : "hidden";
     const avatarSrc = getAvatar(null, m.senderName);
+
     let attHtml = "";
     if (m.attachments && m.attachments.length > 0) {
         attHtml = `<div class="d-flex flex-wrap gap-2 mb-2">`;
         m.attachments.forEach(a => {
             if (a.type === 1) attHtml += `<a href="${a.url}" target="_blank"><img src="${a.url}" class="rounded border" style="max-width:200px;max-height:200px;object-fit:cover;"></a>`;
-            else attHtml += `<a href="${a.url}" download="${a.name}" target="_blank" class="btn btn-sm btn-light border d-flex align-items-center gap-2 text-decoration-none text-dark" style="max-width:200px;"><i class="bi bi-file-earmark-arrow-down-fill text-primary"></i><div class="text-truncate">${a.name}</div></a>`;
+            else attHtml += `<a href="${a.url}" download="${a.name}" target="_blank" class="btn btn-sm btn-light border d-flex align-items-center gap-2 text-decoration-none text-dark" style="max-width:200px;"><i class="bi bi-file-earmark-arrow-down-fill text-primary fs-5"></i><div class="text-truncate" style="max-width: 140px;">${a.name}</div></a>`;
         }); attHtml += `</div>`;
     }
+
     const nameHtml = (!isMine && !sameSender) ? `<div class="small text-muted ms-1 mb-1 profile-link" data-id="${m.senderId}">${m.senderName}</div>` : "";
-    wrapper.innerHTML = `${isMine ? '' : `<img src="${avatarSrc}" class="rounded-circle profile-link" width="32" height="32" style="visibility:${avatarVisibility}" data-id="${m.senderId}">`}<div style="max-width:100%;display:flex;flex-direction:column;align-items:${isMine ? 'flex-end' : 'flex-start'}">${nameHtml}<div class="message-bubble ${isMine ? "message-mine" : "message-other"}">${attHtml}<div class="mb-1">${m.text || ""}</div><div class="text-end opacity-75" style="font-size:0.7em;margin-bottom:-4px;">${new Date(m.sentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div></div></div>`;
+
+    const actionsHtml = `<div class="d-flex align-items-center px-2">${deleteBtn}</div>`;
+
+    wrapper.innerHTML = `
+        ${isMine ? '' : `<img src="${avatarSrc}" class="rounded-circle profile-link" width="32" height="32" style="visibility:${avatarVisibility}" data-id="${m.senderId}">`}
+        
+        <div style="max-width:100%; display:flex; flex-direction:column; align-items:${isMine ? 'flex-end' : 'flex-start'}">
+            ${nameHtml}
+            <div class="d-flex align-items-center ${isMine ? 'flex-row-reverse' : 'flex-row'}">
+                <div class="message-bubble ${isMine ? "message-mine" : "message-other"}">
+                    ${attHtml}
+                    <div class="mb-1">${m.text || ""}</div>
+                    <div class="text-end opacity-75" style="font-size:0.7em;margin-bottom:-4px;">${new Date(m.sentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                </div>
+                ${deleteBtn ? actionsHtml : ''}
+            </div>
+        </div>
+    `;
     els.messagesList.appendChild(wrapper);
 }
+
+function updateLastMessageInList(chatId, text, time) {
+    const el = document.getElementById(`last-msg-${chatId}`);
+    if (el) el.textContent = text || "Вложение";
+}
+function scrollToBottom() { els.messagesContainer.scrollTop = els.messagesContainer.scrollHeight; }
 
 function openChatInfo(chatId) {
     fetch(`/api/chat/${chatId}`).then(r => r.json()).then(chat => {
         els.participantsList.innerHTML = "";
-
         els.chatInfoName.textContent = chat.name;
-        els.chatInfoAvatar.src = getAvatar(null, chat.name);
+        els.chatInfoAvatar.src = getAvatar(chat.avatarUrl, chat.name);
         els.chatInfoCount.textContent = `${chat.participants.length} участников`;
-
         if (chat.type === 1) els.btnAddMember.classList.add("d-none"); else els.btnAddMember.classList.remove("d-none");
 
         const myParticipant = chat.participants.find(p => p.userId === myUserId);
@@ -287,9 +338,7 @@ function openChatInfo(chatId) {
         const isAdmin = myRole === "Admin" || myRole === "Админ" || myParticipant?.role === 1;
 
         if (isOwner) els.btnDeleteChat.classList.remove("d-none"); else els.btnDeleteChat.classList.add("d-none");
-
-        if (chat.type === 0 && (isOwner || isAdmin)) els.btnChangeChatAvatar.classList.remove("d-none");
-        else els.btnChangeChatAvatar.classList.add("d-none");
+        if (chat.type === 0 && (isOwner || isAdmin)) els.btnChangeChatAvatar.classList.remove("d-none"); else els.btnChangeChatAvatar.classList.add("d-none");
 
         chat.participants.forEach(p => {
             const isMe = p.userId === myUserId;
@@ -322,6 +371,12 @@ function openProfile(id) {
         new bootstrap.Modal(document.getElementById('profileModal')).show();
     });
 }
+
+window.deleteMessage = async function (id) {
+    if (!confirm("Удалить сообщение?")) return;
+    const res = await fetch(`/api/chat/${currentChatId}/messages/${id}`, { method: "DELETE" });
+    if (!res.ok) alert("Ошибка удаления");
+};
 
 window.createPrivateChat = async function (id) { const res = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "P", type: 1, participantIds: [parseInt(id)] }) }); if (res.ok) { const c = await res.json(); bootstrap.Modal.getOrCreateInstance(document.getElementById('profileModal')).hide(); bootstrap.Modal.getOrCreateInstance(document.getElementById('createChatModal')).hide(); await loadChats(); setTimeout(() => document.getElementById(`chat-item-${c.id}`)?.click(), 100); } else alert("Ошибка"); };
 window.transferOwnership = async function (id) { if (!confirm("Передать права?")) return; const res = await fetch(`/api/chat/${currentChatId}/transfer-ownership`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ newOwnerId: id }) }); if (res.ok) openChatInfo(currentChatId); else alert("Ошибка"); };

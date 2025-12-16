@@ -290,6 +290,39 @@ namespace WebMessenger.Controllers
             }));
         }
 
+        [HttpDelete("{chatId}/messages/{messageId}")]
+        public async Task<IActionResult> DeleteMessage(int chatId, int messageId)
+        {
+            var currentUser = await userManager.GetUserAsync(User);
+            if (currentUser == null) return Unauthorized(new { message = "Вы не авторизированы" });
+
+            var message = await db.Messages.FirstOrDefaultAsync(m => m.Id == messageId && m.ChatId == chatId);
+            if (message == null) return NotFound(new { message = "Сообщение не найдено" });
+
+            bool isSender = message.SenderId == currentUser.Id;
+
+            bool isAdminOrOwner = false;
+
+            var participant = await db.Participants
+                .FirstOrDefaultAsync(p => p.ChatId == chatId && p.UserId == currentUser.Id);
+
+            if (participant != null && (participant.Role == UserRole.Owner || participant.Role == UserRole.Admin))
+            {
+                isAdminOrOwner = true;
+            }
+
+            if (!isSender && !isAdminOrOwner)
+                return StatusCode(403, new { message = "Вы не можете удалить это сообщение" });
+
+            db.Messages.Remove(message);
+            await db.SaveChangesAsync();
+
+            await hubContext.Clients.Group(chatId.ToString())
+                .SendAsync("MessageDeleted", messageId);
+
+            return Ok(new { message = "Сообщение удалено", messageId });
+        }
+
         [HttpPost("{chatId}/transfer-ownership")]
         public async Task<IActionResult> TransferOwnership(int chatId, [FromBody] TransferOwnerRequest req)
         {
@@ -331,7 +364,7 @@ namespace WebMessenger.Controllers
 
             if (chat == null) return NotFound();
 
-            var participant = chat.Participants.FirstOrDefault(p => p.UserId == currentUser.Id);
+            var participant = chat.Participants.FirstOrDefault(p => p.UserId == currentUser!.Id);
             if (participant == null || participant.Role != UserRole.Owner)
                 return StatusCode(403, new { message = "Только владелец может удалить чат" });
 
@@ -351,7 +384,7 @@ namespace WebMessenger.Controllers
 
             if (chat == null) return NotFound();
 
-            var caller = chat.Participants.FirstOrDefault(p => p.UserId == currentUser.Id);
+            var caller = chat.Participants.FirstOrDefault(p => p.UserId == currentUser!.Id);
             if (caller == null || caller.Role != UserRole.Owner) return Forbid();
 
             var target = chat.Participants.FirstOrDefault(p => p.UserId == req.UserId);
@@ -372,7 +405,7 @@ namespace WebMessenger.Controllers
 
             if (chat == null) return NotFound();
 
-            var caller = chat.Participants.FirstOrDefault(p => p.UserId == currentUser.Id);
+            var caller = chat.Participants.FirstOrDefault(p => p.UserId == currentUser!.Id);
             if (caller == null || caller.Role != UserRole.Owner) return Forbid();
 
             var target = chat.Participants.FirstOrDefault(p => p.UserId == req.UserId);
@@ -396,7 +429,7 @@ namespace WebMessenger.Controllers
 
             if (chat == null) return NotFound();
 
-            var caller = chat.Participants.FirstOrDefault(p => p.UserId == currentUser.Id);
+            var caller = chat.Participants.FirstOrDefault(p => p.UserId == currentUser!.Id);
             var target = chat.Participants.FirstOrDefault(p => p.UserId == req.UserId);
 
             if (caller == null || target == null) return BadRequest();
@@ -429,7 +462,7 @@ namespace WebMessenger.Controllers
 
             if (chat == null) return NotFound(new { message = "Чат не найден" });
 
-            var participant = chat.Participants.FirstOrDefault(p => p.UserId == currentUser.Id);
+            var participant = chat.Participants.FirstOrDefault(p => p.UserId == currentUser!.Id);
 
             if (participant == null || (participant.Role != UserRole.Owner && participant.Role != UserRole.Admin))
                 return StatusCode(403, new { message = "Нет прав на смену аватара чата" });
