@@ -5,6 +5,10 @@
     {
       "library": "microsoft-signalr@9.0.6",
       "destination": "wwwroot/lib/microsoft-signalr/"
+    },
+    {
+      "library": "bootstrap-icons@1.13.1",
+      "destination": "wwwroot/bootstrap-icons/"
     }
   ]
 }

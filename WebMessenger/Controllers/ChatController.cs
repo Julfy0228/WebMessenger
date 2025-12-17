@@ -154,7 +154,8 @@ namespace WebMessenger.Controllers
                         UserId = p.UserId,
                         UserName = p.User!.UserName,
                         DisplayName = p.User!.DisplayName,
-                        Role = p.Role
+                        Role = p.Role,
+                        IsMuted = p.IsMuted
                     }).ToList(),
                     LastMessage = db.Messages
                         .Where(m => m.ChatId == c.Id)
@@ -183,6 +184,12 @@ namespace WebMessenger.Controllers
             if (chat == null) return NotFound(new { message = "Чат не найден" });
             if (!chat.Participants.Any(p => p.UserId == currentUser.Id))
                 return StatusCode(403, new { message = "Вы не состоите в этом чате" });
+
+            var senderParticipant = chat.Participants.FirstOrDefault(p => p.UserId == currentUser.Id);
+            if (senderParticipant == null) return StatusCode(403, new { message = "Вы не участник чата" });
+
+            if (senderParticipant.IsMuted)
+                return StatusCode(403, new { message = "Вы заглушены и не можете писать сообщения." });
 
             using var tx = await db.Database.BeginTransactionAsync();
 
@@ -278,6 +285,23 @@ namespace WebMessenger.Controllers
                 .OrderBy(m => m.SentAt)
                 .ToListAsync();
 
+            var unreadMessages = messages
+                .Where(m => m.SenderId != currentUser.Id && !m.IsRead)
+                .ToList();
+
+            if (unreadMessages.Any())
+            {
+                foreach (var msg in unreadMessages)
+                {
+                    msg.IsRead = true;
+                    msg.ReadAt = DateTime.UtcNow;
+                }
+                await db.SaveChangesAsync();
+
+                var readIds = unreadMessages.Select(m => m.Id).ToList();
+                await hubContext.Clients.Group(chatId.ToString()).SendAsync("MessagesRead", readIds);
+            }
+
             return Ok(messages.Select(m => new MessageResponse
             {
                 Id = m.Id,
@@ -286,6 +310,8 @@ namespace WebMessenger.Controllers
                 SenderName = m.Sender?.UserName,
                 Text = m.Text,
                 SentAt = m.SentAt,
+                EditedAt = m.EditedAt,
+                IsRead = m.IsRead,
                 Attachments = m.Attachments.Select(MapAttachment).ToList()
             }));
         }
@@ -321,6 +347,28 @@ namespace WebMessenger.Controllers
                 .SendAsync("MessageDeleted", messageId);
 
             return Ok(new { message = "Сообщение удалено", messageId });
+        }
+
+        [HttpPut("{chatId}/messages/{messageId}")]
+        public async Task<IActionResult> EditMessage(int chatId, int messageId, [FromBody] EditMessageRequest request)
+        {
+            var currentUser = await userManager.GetUserAsync(User);
+            var message = await db.Messages.FirstOrDefaultAsync(m => m.Id == messageId && m.ChatId == chatId);
+
+            if (message == null) return NotFound(new { message = "Сообщение не найдено" });
+
+            if (message.SenderId != currentUser.Id)
+                return StatusCode(403, new { message = "Редактировать можно только свои сообщения" });
+
+            message.Text = request.NewText;
+            message.EditedAt = DateTime.UtcNow;
+
+            await db.SaveChangesAsync();
+
+            await hubContext.Clients.Group(chatId.ToString())
+                .SendAsync("MessageEdited", message.Id, message.Text, message.EditedAt);
+
+            return Ok(new { message = "Сообщение изменено" });
         }
 
         [HttpPost("{chatId}/transfer-ownership")]
@@ -489,6 +537,63 @@ namespace WebMessenger.Controllers
             return Ok(new { avatarUrl = relativeUrl });
         }
 
+        [HttpPost("{chatId}/leave")]
+        public async Task<IActionResult> LeaveChat(int chatId)
+        {
+            var currentUser = await userManager.GetUserAsync(User);
+            var chat = await db.Chats.Include(c => c.Participants).FirstOrDefaultAsync(c => c.Id == chatId);
+
+            if (chat == null) return NotFound();
+
+            var participant = chat.Participants.FirstOrDefault(p => p.UserId == currentUser!.Id);
+            if (participant == null) return BadRequest(new { message = "Вы не состоите в этом чате" });
+
+            if (participant.Role == UserRole.Owner)
+                return BadRequest(new { message = "Владелец не может выйти из чата. Удалите чат или передайте права." });
+
+            db.Participants.Remove(participant);
+            await db.SaveChangesAsync();
+
+            await hubContext.Clients.Group(chatId.ToString()).SendAsync("UserLeft", chatId, currentUser!.Id);
+
+            return Ok(new { message = "Вы вышли из чата" });
+        }
+
+        [HttpPost("{chatId}/mute")]
+        public async Task<IActionResult> ToggleMute(int chatId, [FromBody] ChatActionRequest req)
+        {
+            var currentUser = await userManager.GetUserAsync(User);
+            var chat = await db.Chats.Include(c => c.Participants).FirstOrDefaultAsync(c => c.Id == chatId);
+
+            if (chat == null) return NotFound();
+
+            var caller = chat.Participants.FirstOrDefault(p => p.UserId == currentUser!.Id);
+            var target = chat.Participants.FirstOrDefault(p => p.UserId == req.UserId);
+
+            if (caller == null || target == null) return BadRequest();
+
+            bool canMute = false;
+
+            if (caller.Role == UserRole.Owner)
+            {
+                if (target.UserId != currentUser!.Id) canMute = true;
+            }
+            else if (caller.Role == UserRole.Admin)
+            {
+                if (target.Role == UserRole.Member) canMute = true;
+            }
+
+            if (!canMute) return StatusCode(403, new { message = "Недостаточно прав" });
+
+            target.IsMuted = !target.IsMuted;
+            await db.SaveChangesAsync();
+
+            await hubContext.Clients.Group(chatId.ToString())
+                .SendAsync("MuteStatusChanged", chatId, req.UserId, target.IsMuted);
+
+            return Ok(new { isMuted = target.IsMuted });
+        }
+
         private ChatResponse MapToResponse(Chat chat)
         {
             return new ChatResponse
@@ -503,7 +608,8 @@ namespace WebMessenger.Controllers
                     UserId = p.UserId,
                     UserName = p.User?.UserName,
                     DisplayName = p.User?.DisplayName,
-                    Role = p.Role
+                    Role = p.Role,
+                    IsMuted = p.IsMuted
                 })]
             };
         }

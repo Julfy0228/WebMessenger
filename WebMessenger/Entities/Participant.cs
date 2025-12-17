@@ -21,6 +21,8 @@ namespace WebMessenger.Entities
 
         public DateTime JoinedAt { get; set; } = DateTime.UtcNow;
 
+        public bool IsMuted { get; set; }
+
         [JsonIgnore]
         public Chat? Chat { get; set; }
 
