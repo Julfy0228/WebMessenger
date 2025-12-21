@@ -500,7 +500,7 @@ function renderMessage(m) {
     wrapper.id = `msg-row-${m.id}`;
 
     const avatarVisibility = (!isMine && !sameSender) ? "visible" : "hidden";
-    const avatarSrc = getAvatar(null, m.senderName);
+    const avatarSrc = getAvatar(m.senderAvatarUrl, m.senderDisplayName || m.senderName);
 
     let attHtml = "";
     if (m.attachments && m.attachments.length > 0) {
@@ -522,7 +522,7 @@ function renderMessage(m) {
 
     const editedHtml = m.editedAt ? `<i class="bi bi-pencil-fill msg-edited-icon" title="Изменено"></i>` : "";
 
-    const safeSenderName = escapeHtml(m.senderName);
+    const safeSenderName = escapeHtml(m.senderDisplayName || m.senderName);
     const safeText = escapeHtml(m.text || "");
     const nameHtml = (!isMine && !sameSender) ? `<div class="small text-muted ms-1 mb-1 profile-link" data-id="${m.senderId}">${safeSenderName}</div>` : "";
     const actionsWrapper = actionsBtn ? `<div class="d-flex align-items-center px-2">${actionsBtn}</div>` : "";

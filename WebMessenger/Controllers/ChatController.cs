@@ -261,6 +261,8 @@ namespace WebMessenger.Controllers
                 ChatId = chatId,
                 SenderId = currentUser.Id,
                 SenderName = currentUser.UserName,
+                SenderDisplayName = currentUser.DisplayName,
+                SenderAvatarUrl = currentUser.AvatarUrl,
                 Text = message.Text,
                 SentAt = message.SentAt,
                 Attachments = attachments.Select(MapAttachment).ToList()
@@ -308,6 +310,8 @@ namespace WebMessenger.Controllers
                 ChatId = m.ChatId,
                 SenderId = m.SenderId,
                 SenderName = m.Sender?.UserName,
+                SenderDisplayName = m.Sender?.DisplayName,
+                SenderAvatarUrl = m.Sender?.AvatarUrl,
                 Text = m.Text,
                 SentAt = m.SentAt,
                 EditedAt = m.EditedAt,
